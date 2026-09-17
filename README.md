@@ -38,9 +38,31 @@ Sensitive AR data stays on the client. Parsed workbooks, filters, and locks are 
 
 ## How to run
 
-1. Open `threshold-explorer.html` in a modern browser.
+1. Open `threshold-explorer.html` (or `index.html`) in a modern browser.
 2. On the **COOP** tab, drop any COOP export; on **Logistics**, drop any logistics claims export (names can differ).
 3. Adjust threshold and filters; use **Lock this threshold** to compare options.
+
+## Publish a free website (GitHub Pages)
+
+The repo is ready locally on `main` (Excel files are **not** included — they stay on each user’s machine).
+
+1. Create a **public** repo on GitHub: https://github.com/new  
+   Suggested name: `threshold-explorer`
+2. In Terminal, from this folder:
+
+```bash
+git remote add origin https://github.com/YOUR_USERNAME/threshold-explorer.git
+git push -u origin main
+```
+
+3. On GitHub: **Settings → Pages → Build and deployment**  
+   - Source: **Deploy from a branch**  
+   - Branch: **main** / **/ (root)** → Save  
+4. After ~1 minute the site is:
+
+`https://YOUR_USERNAME.github.io/threshold-explorer/`
+
+Anyone with the link can open the tool and drop their own Excel files. No claim data is hosted on GitHub.
 
 ## Data model
 
