@@ -1,0 +1,4457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <title>Auto Credit/Write Off Threshold Explorer — COOP & Logistics</title>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: Arial, Helvetica, sans-serif;
+      margin: 0;
+      padding: 0;
+      background: #f5f6fa;
+      color: #1a1a2e;
+    }
+    .topbar {
+      background: #fff;
+      border-bottom: 1px solid #e5e7f0;
+      padding: 16px 24px 0;
+      position: sticky;
+      top: 0;
+      z-index: 20;
+    }
+    .topbar h1 {
+      margin: 0 0 4px;
+      font-size: 22px;
+      color: #2649B2;
+    }
+    .topbar .sub {
+      margin: 0 0 14px;
+      color: #555;
+      font-size: 13px;
+    }
+    .tabs {
+      display: flex;
+      gap: 0;
+    }
+    .tab {
+      appearance: none;
+      border: 1px solid transparent;
+      border-bottom: none;
+      background: transparent;
+      padding: 12px 22px;
+      font-size: 14px;
+      font-weight: 700;
+      color: #777;
+      cursor: pointer;
+      border-radius: 10px 10px 0 0;
+      font-family: inherit;
+    }
+    .tab.active {
+      background: #fff;
+      color: #2649B2;
+      border-color: #e5e7f0;
+      box-shadow: 0 -1px 0 #fff inset;
+      position: relative;
+      top: 1px;
+    }
+    .wrap {
+      max-width: 1250px;
+      margin: 0 auto;
+      padding: 20px 24px 48px;
+    }
+    .panel {
+      background: #fff;
+      border-radius: 14px;
+      padding: 22px 24px;
+      box-shadow: 0 1px 2px rgba(28, 40, 80, 0.04), 0 8px 24px rgba(28, 40, 80, 0.06);
+      border: 1px solid #eef0f6;
+      margin-bottom: 18px;
+    }
+    .panel.upload-panel {
+      padding: 16px 18px;
+      background: linear-gradient(180deg, #fbfcff 0%, #fff 100%);
+    }
+    .drop {
+      border: 1.5px dashed #c5c9db;
+      border-radius: 12px;
+      padding: 18px 20px;
+      text-align: center;
+      background: #fafbff;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .drop.dragover { border-color: #2649B2; background: #EEF1FB; }
+    .drop strong { color: #2649B2; }
+    .hint { color: #888; font-size: 12px; margin-top: 6px; }
+    .file-meta { margin-top: 10px; font-size: 13px; color: #555; display: none; }
+    .file-meta.on { display: block; }
+    .status { margin-top: 8px; font-size: 13px; color: #888; min-height: 1.2em; }
+    .status.ok { color: #1E6B6B; }
+    .status.err { color: #C0392B; }
+    .upload-actions {
+      display: flex;
+      justify-content: flex-end;
+      margin-top: 10px;
+    }
+
+    .controls-panel { padding: 0; overflow: visible; }
+    .controls-top {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px 16px;
+      padding: 16px 22px 0;
+    }
+    .controls-top .mode-row { margin-bottom: 0; }
+    .controls-grid {
+      display: grid;
+      grid-template-columns: minmax(240px, 0.95fr) minmax(280px, 1.05fr);
+      gap: 0;
+      align-items: stretch;
+    }
+    @media (max-width: 860px) {
+      .controls-grid { grid-template-columns: 1fr; }
+    }
+    .control-card {
+      padding: 16px 22px 18px;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+    }
+    .control-card + .control-card {
+      border-left: 1px solid #eef0f6;
+    }
+    @media (max-width: 860px) {
+      .control-card + .control-card {
+        border-left: none;
+        border-top: 1px solid #eef0f6;
+      }
+    }
+    .control-card h3 {
+      margin: 0 0 10px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+      color: #2649B2;
+    }
+    .threshold-row {
+      display: grid;
+      grid-template-columns: 118px 1fr;
+      gap: 14px;
+      align-items: end;
+    }
+    @media (max-width: 520px) {
+      .threshold-row { grid-template-columns: 1fr; }
+    }
+    .slider-wrap {
+      padding-bottom: 6px;
+    }
+    .slider-wrap .visually-hidden {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+    .slider-meta {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 8px;
+      margin-top: 6px;
+    }
+    .slider-meta .amount-hint {
+      margin-top: 0;
+      flex: 1;
+    }
+    .controls-footer {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 22px;
+      border-top: 1px solid #eef0f6;
+      background: #f7f8fc;
+    }
+    .preset-group, .action-group {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+    }
+    .preset-label {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: #888;
+      margin-right: 2px;
+    }
+
+    .filter-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      flex: 1;
+    }
+    @media (max-width: 900px) { .filter-grid { grid-template-columns: 1fr; } }
+    label {
+      display: block;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: #777;
+      margin-bottom: 5px;
+    }
+    input[type="number"], select {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid #d8dce8;
+      border-radius: 10px;
+      font-size: 14px;
+      font-family: inherit;
+      background: #fff;
+    }
+    input[type="number"]:focus {
+      outline: none;
+      border-color: #2649B2;
+      box-shadow: 0 0 0 3px rgba(38, 73, 178, 0.12);
+    }
+    .filter-hint {
+      font-size: 11px;
+      color: #9599a8;
+      margin-top: 10px;
+      line-height: 1.35;
+    }
+    .filter-field label {
+      margin-bottom: 6px;
+    }
+    .reason-field {
+      margin-top: 14px;
+    }
+    .msel {
+      position: relative;
+      width: 100%;
+    }
+    .msel-toggle {
+      appearance: none;
+      width: 100%;
+      text-align: left;
+      padding: 10px 30px 10px 12px;
+      border: 1px solid #d8dce8;
+      border-radius: 10px;
+      font-size: 13px;
+      font-family: inherit;
+      background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23666' d='M1 1l5 5 5-5'/%3E%3C/svg%3E") no-repeat right 12px center;
+      color: #1a1a2e;
+      cursor: pointer;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .msel.open .msel-toggle {
+      border-color: #2649B2;
+      box-shadow: 0 0 0 3px rgba(38, 73, 178, 0.12);
+    }
+    .msel-panel {
+      display: none;
+      position: absolute;
+      z-index: 40;
+      top: calc(100% + 4px);
+      left: 0;
+      right: 0;
+      min-width: 220px;
+      max-height: 260px;
+      overflow: auto;
+      background: #fff;
+      border: 1px solid #d8dce8;
+      border-radius: 10px;
+      box-shadow: 0 10px 28px rgba(20, 30, 60, 0.14);
+      padding: 8px;
+    }
+    .msel.open .msel-panel { display: block; }
+    .msel-actions {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 8px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid #eee;
+    }
+    .msel-actions button {
+      appearance: none;
+      border: 1px solid #d8dce8;
+      background: #f5f6fa;
+      border-radius: 6px;
+      padding: 4px 8px;
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+      font-family: inherit;
+      color: #2649B2;
+    }
+    .msel-opt {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      padding: 6px 6px;
+      font-size: 12.5px;
+      cursor: pointer;
+      border-radius: 6px;
+    }
+    .msel-opt:hover { background: #EEF1FB; }
+    .msel-opt input {
+      margin-top: 2px;
+      accent-color: #2649B2;
+    }
+    .msel.wide-panel .msel-panel {
+      min-width: 300px;
+      right: auto;
+    }
+    .mode-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 14px;
+    }
+    .mode-chip {
+      appearance: none;
+      border: 1px solid #d8dce8;
+      background: #fff;
+      border-radius: 999px;
+      padding: 8px 14px;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      font-family: inherit;
+      color: #666;
+      transition: background 0.12s, border-color 0.12s, color 0.12s;
+    }
+    .mode-chip:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+    .mode-chip:hover:not(:disabled) { border-color: #b8bfd4; }
+    .mode-chip.active {
+      background: #EEF1FB;
+      border-color: #2649B2;
+      color: #2649B2;
+    }
+    .mode-chip.option-chip.active {
+      background: #fff4e8;
+      border-color: #C98A2C;
+      color: #8a5a12;
+    }
+    .amount-fields {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    .amount-fields.single {
+      grid-template-columns: 1fr;
+    }
+    .hidden-mode { display: none !important; }
+    input[type="range"] {
+      width: 100%;
+      margin: 0;
+      height: 28px;
+      accent-color: #2649B2;
+      cursor: pointer;
+    }
+    .amount-hint {
+      margin-top: 8px;
+      font-size: 12px;
+      color: #9599a8;
+    }
+    .btn-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+    button.action {
+      appearance: none;
+      border: 1px solid #d8dce8;
+      background: #fff;
+      border-radius: 10px;
+      padding: 9px 14px;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      font-family: inherit;
+      color: #1a1a2e;
+    }
+    button.action.lock {
+      background: #2649B2;
+      border-color: #2649B2;
+      color: #fff;
+      box-shadow: 0 4px 12px rgba(38, 73, 178, 0.25);
+    }
+    button.action:hover { filter: brightness(0.97); }
+    button.action.preset {
+      min-width: 64px;
+      background: #fff;
+      color: #2649B2;
+      border-color: #c9d0e8;
+    }
+    button.action.ghost {
+      color: #777;
+      border-color: #e0e3ec;
+      background: #fff;
+      font-weight: 600;
+      font-size: 12px;
+      padding: 7px 12px;
+    }
+    button.action.ghost:hover {
+      color: #C0392B;
+      border-color: #e8b4ae;
+      background: #fff8f7;
+    }
+
+    .kpis {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+    @media (max-width: 860px) { .kpis { grid-template-columns: 1fr 1fr; } }
+    .kpi {
+      background: #fff;
+      border-radius: 12px;
+      padding: 14px 16px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+    }
+    .kpi .name { font-size: 11px; color: #777; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+    .kpi .value { font-size: 22px; font-weight: 700; color: #2649B2; margin-top: 4px; }
+    .kpi .sub { font-size: 12px; color: #777; margin-top: 2px; }
+
+    .section-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: #2649B2;
+      margin: 0 0 12px;
+    }
+    .charts {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+      margin-bottom: 8px;
+    }
+    @media (max-width: 800px) { .charts { grid-template-columns: 1fr; } }
+    .chart-box {
+      border: 1px solid #eee;
+      border-radius: 10px;
+      padding: 16px;
+      position: relative;
+    }
+    .chart-title { font-weight: 700; font-size: 15px; margin-bottom: 2px; color: #2649B2; }
+    .chart-subtitle { font-size: 11px; color: #888; margin-bottom: 14px; }
+    .chart-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+    .chart-head .chart-subtitle { margin-bottom: 0; }
+    .dl-btn {
+      appearance: none;
+      flex-shrink: 0;
+      border: 1px solid #d8dce8;
+      background: #fff;
+      border-radius: 6px;
+      padding: 5px 10px;
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+      font-family: inherit;
+      color: #2649B2;
+      white-space: nowrap;
+    }
+    .dl-btn:hover { background: #EEF1FB; }
+    .dl-btn:disabled { opacity: 0.6; cursor: wait; }
+    .legend { display: flex; gap: 16px; font-size: 12px; margin-bottom: 10px; flex-wrap: wrap; }
+    .legend-item { display: flex; align-items: center; gap: 6px; }
+    .swatch { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+    .bar-group { display: flex; align-items: flex-end; gap: 10px; margin-bottom: 14px; }
+    .bar-cat-label {
+      width: 110px;
+      font-size: 12px;
+      font-weight: 600;
+      text-align: right;
+      padding-right: 8px;
+      flex-shrink: 0;
+    }
+    .bars { flex: 1; display: flex; flex-direction: column; gap: 4px; }
+    .bar-row { display: flex; align-items: center; gap: 8px; }
+    .bar-track {
+      flex: 1;
+      background: #f0f1f7;
+      border-radius: 4px;
+      height: 16px;
+    }
+    .bar-fill { height: 16px; border-radius: 4px; min-width: 0; }
+    .bar-value { font-size: 11px; margin-left: 4px; white-space: nowrap; color: #333; min-width: 120px; }
+
+    table.data {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12.5px;
+      margin-top: 8px;
+    }
+    table.data th, table.data td {
+      padding: 7px 8px;
+      text-align: right;
+      border-bottom: 1px solid #eee;
+    }
+    table.data th:first-child, table.data td:first-child { text-align: left; }
+    table.data thead th { background: #2649B2; color: #fff; }
+    table.data th.pct-col, table.data td.pct-col { background: #F3F0FB; }
+    table.data tr.category-row { font-weight: 700; background: #EEF1FB; }
+    table.data tr.grand-total { font-weight: 700; background: #D4D9F0; }
+    table.data.clients-matrix {
+      font-size: 12px;
+    }
+    table.data.clients-matrix th,
+    table.data.clients-matrix td {
+      vertical-align: top;
+      white-space: nowrap;
+    }
+    table.data.clients-matrix td.client-name {
+      min-width: 160px;
+      max-width: 240px;
+      white-space: normal;
+      font-weight: 600;
+    }
+    table.data.clients-matrix .client-id {
+      display: block;
+      font-size: 10.5px;
+      font-weight: 500;
+      color: #888;
+      margin-top: 1px;
+    }
+    table.data.clients-matrix .cell-main {
+      font-variant-numeric: tabular-nums;
+      font-weight: 600;
+    }
+    table.data.clients-matrix .cell-sub {
+      display: block;
+      font-size: 10.5px;
+      color: #777;
+      margin-top: 1px;
+      font-variant-numeric: tabular-nums;
+    }
+    table.data.clients-matrix td.muted-zero {
+      color: #c5c8d4;
+      font-weight: 500;
+    }
+    .table-note {
+      margin-top: 8px;
+      font-size: 11.5px;
+      color: #888;
+      line-height: 1.4;
+    }
+
+    /* —— Priority / urgency —— */
+    .priority-panel .section-title { margin-bottom: 6px; }
+    .priority-sub {
+      font-size: 12.5px;
+      color: #666;
+      margin: 0 0 14px;
+      line-height: 1.4;
+    }
+    .priority-controls {
+      display: grid;
+      grid-template-columns: 1.1fr 1fr;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+    @media (max-width: 900px) {
+      .priority-controls { grid-template-columns: 1fr; }
+    }
+    .priority-cuts {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+    }
+    .priority-cuts.combined {
+      grid-template-columns: 1fr 1fr;
+    }
+    .priority-cuts.hidden-mode { display: none !important; }
+    .prio-metric-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      margin-top: 10px;
+    }
+    .priority-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px 14px;
+      margin: 8px 0 12px;
+      font-size: 12px;
+    }
+    .priority-legend span {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-weight: 700;
+      color: #444;
+    }
+    .priority-legend i {
+      width: 12px;
+      height: 12px;
+      border-radius: 3px;
+      display: inline-block;
+    }
+    .priority-kpis {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+    @media (max-width: 700px) {
+      .priority-kpis { grid-template-columns: repeat(2, 1fr); }
+    }
+    .prio-kpi {
+      border: 1px solid #eef0f6;
+      border-radius: 10px;
+      padding: 10px 12px;
+      background: #fbfcff;
+    }
+    .prio-kpi .pk-name {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+    .prio-kpi .pk-value {
+      font-size: 18px;
+      font-weight: 700;
+      color: #1a1a2e;
+    }
+    .prio-kpi .pk-sub {
+      font-size: 11px;
+      color: #888;
+      margin-top: 2px;
+    }
+    .heat-grid-wrap {
+      display: grid;
+      grid-template-columns: 1.2fr 1fr;
+      gap: 16px;
+      align-items: start;
+    }
+    @media (max-width: 960px) {
+      .heat-grid-wrap { grid-template-columns: 1fr; }
+    }
+    .heat-card {
+      border: 1px solid #eef0f6;
+      border-radius: 12px;
+      padding: 14px;
+      background: #fff;
+      min-width: 0;
+    }
+    .heat-card h4 {
+      margin: 0 0 4px;
+      font-size: 13px;
+      color: #2649B2;
+    }
+    .heat-card .heat-caption {
+      font-size: 11.5px;
+      color: #888;
+      margin-bottom: 10px;
+      line-height: 1.35;
+    }
+    .heat-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 11px;
+    }
+    .heat-table th, .heat-table td {
+      border: 1px solid #e8eaf2;
+      padding: 6px 5px;
+      text-align: center;
+      min-width: 52px;
+    }
+    .heat-table th {
+      background: #f5f6fa;
+      font-weight: 700;
+      color: #555;
+      font-size: 10.5px;
+    }
+    .heat-table th.corner {
+      background: #fff;
+      text-align: left;
+      color: #888;
+      font-weight: 600;
+    }
+    .heat-table td.heat-cell {
+      font-variant-numeric: tabular-nums;
+      font-weight: 700;
+      color: #1a1a2e;
+      position: relative;
+    }
+    .heat-table td.heat-cell .h-sub {
+      display: block;
+      font-size: 9.5px;
+      font-weight: 600;
+      opacity: 0.75;
+      margin-top: 1px;
+    }
+    .heat-table td.row-lab {
+      text-align: left;
+      font-weight: 700;
+      background: #fafbff;
+      color: #444;
+      white-space: nowrap;
+    }
+    .heat-strip {
+      display: grid;
+      gap: 4px;
+      margin-top: 4px;
+    }
+    .heat-strip-row {
+      display: grid;
+      grid-template-columns: 88px 1fr;
+      gap: 8px;
+      align-items: stretch;
+    }
+    .heat-strip-lab {
+      font-size: 11px;
+      font-weight: 700;
+      color: #555;
+      display: flex;
+      align-items: center;
+    }
+    .heat-strip-cells {
+      display: grid;
+      grid-auto-flow: column;
+      grid-auto-columns: 1fr;
+      gap: 3px;
+    }
+    .heat-strip-cells .heat-cell {
+      border-radius: 6px;
+      padding: 8px 4px;
+      text-align: center;
+      font-size: 11px;
+      font-weight: 700;
+      border: 1px solid rgba(0,0,0,0.04);
+      min-height: 44px;
+    }
+    .heat-strip-cells .heat-cell .h-sub {
+      display: block;
+      font-size: 9.5px;
+      font-weight: 600;
+      opacity: 0.8;
+      margin-top: 2px;
+    }
+    .stack-bars {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .stack-row {
+      display: grid;
+      grid-template-columns: 140px 1fr 52px;
+      gap: 8px;
+      align-items: center;
+    }
+    @media (max-width: 600px) {
+      .stack-row { grid-template-columns: 1fr; }
+    }
+    .stack-lab {
+      font-size: 12px;
+      font-weight: 700;
+      color: #333;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .stack-track {
+      display: flex;
+      height: 18px;
+      border-radius: 6px;
+      overflow: hidden;
+      background: #eef0f6;
+    }
+    .stack-seg {
+      height: 100%;
+      min-width: 0;
+    }
+    .stack-pct {
+      font-size: 11px;
+      font-weight: 700;
+      color: #666;
+      text-align: right;
+    }
+    .prio-empty {
+      font-size: 13px;
+      color: #888;
+      padding: 12px 0;
+    }
+    .reason-heat-block {
+      margin-bottom: 14px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid #eef0f6;
+    }
+    .reason-heat-block:last-child {
+      border-bottom: none;
+      margin-bottom: 0;
+      padding-bottom: 0;
+    }
+    .reason-heat-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+    .reason-heat-head strong {
+      font-size: 13px;
+      color: #2649B2;
+    }
+    .reason-heat-head span {
+      font-size: 11px;
+      color: #888;
+    }
+    .bucket-thr-input {
+      width: 96px;
+      padding: 6px 8px;
+      border: 1px solid #d8dce8;
+      border-radius: 8px;
+      font-size: 13px;
+      font-family: inherit;
+    }
+    .bucket-thr-input:focus {
+      outline: none;
+      border-color: #2649B2;
+      box-shadow: 0 0 0 3px rgba(38, 73, 178, 0.12);
+    }
+    .criteria-block-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: #2649B2;
+      margin-bottom: 8px;
+    }
+    .play-sliders {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 14px;
+    }
+    @media (max-width: 800px) {
+      .play-sliders { grid-template-columns: 1fr; }
+    }
+    .play-slider label {
+      margin-bottom: 6px;
+    }
+    .play-slider-row {
+      display: grid;
+      grid-template-columns: 110px 1fr;
+      gap: 10px;
+      align-items: center;
+    }
+    .play-slider input[type="range"] {
+      width: 100%;
+      margin: 0;
+      accent-color: #2649B2;
+    }
+    .indep-mode-bar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px 16px;
+      margin-bottom: 14px;
+    }
+    .indep-mode-note { font-size: 12.5px; color: #555; }
+    .indep-filters {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+    @media (max-width: 800px) {
+      .indep-filters { grid-template-columns: 1fr; }
+    }
+    .indep-card {
+      background: #f5f6fa;
+      border: 1px solid #e5e7f0;
+      border-radius: 14px;
+      padding: 16px 18px;
+    }
+    .indep-card.dimmed { opacity: 0.4; pointer-events: none; }
+    .indep-card h4 { margin: 0 0 12px; font-size: 15px; color: #1a1a2e; }
+    .indep-sub { font-size: 12px; font-weight: 500; color: #888; }
+    .indep-row {
+      display: grid;
+      grid-template-columns: 110px 1fr 88px;
+      gap: 10px;
+      align-items: center;
+      margin-top: 8px;
+    }
+    .indep-lab { font-size: 13px; color: #333; }
+    .indep-val {
+      font-size: 13px;
+      font-weight: 700;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+    .indep-row input[type="range"] {
+      width: 100%;
+      margin: 0;
+      accent-color: #2649B2;
+    }
+    .indep-resolved {
+      display: none;
+    }
+    .heat-1d {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+    }
+    .heat-1d-cell {
+      border-radius: 12px;
+      padding: 14px 12px;
+      min-height: 100px;
+    }
+    .heat-1d-cell.light { color: #1a1a2e; }
+    .heat-1d-cell:not(.light) { color: #fff; }
+    .heat-1d-cell .h1-name { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+    .heat-1d-cell .h1-val { font-size: 20px; font-weight: 700; margin-top: 6px; }
+    .heat-1d-cell .h1-sub { font-size: 11px; margin-top: 4px; opacity: 0.9; }
+    .heat-2d { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .heat-2d th, .heat-2d td {
+      border: 1px solid #e8eaf2;
+      padding: 10px 8px;
+      text-align: center;
+    }
+    .heat-2d th { background: #f5f6fa; font-weight: 700; color: #444; }
+    .heat-2d th.corner { text-align: left; background: #fff; color: #888; font-weight: 600; }
+    .heat-2d td.row-lab {
+      text-align: left;
+      font-weight: 700;
+      background: #fafbff;
+      white-space: nowrap;
+    }
+    .heat-2d td.heat-cell {
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      min-width: 88px;
+    }
+    .heat-2d .h-sub {
+      display: block;
+      font-size: 10.5px;
+      font-weight: 600;
+      opacity: 0.85;
+      margin-top: 2px;
+    }
+    .filter-heat-head {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+    .min-level-wrap label {
+      display: block;
+      margin-bottom: 4px;
+    }
+    .min-level-wrap select {
+      min-width: 120px;
+      padding: 8px 10px;
+      border: 1px solid #d8dce8;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 700;
+      font-family: inherit;
+      background: #fff;
+    }
+    .filter-heat-table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 6px;
+      font-size: 12px;
+    }
+    .filter-heat-table th {
+      font-weight: 700;
+      color: #444;
+      padding: 6px;
+      text-align: center;
+    }
+    .filter-heat-table th .th-range {
+      display: block;
+      font-size: 10.5px;
+      font-weight: 600;
+      color: #888;
+      margin-top: 2px;
+    }
+    .filter-heat-table td.row-lab {
+      text-align: left;
+      font-weight: 700;
+      white-space: nowrap;
+      padding-right: 8px;
+      vertical-align: middle;
+    }
+    .filter-heat-table td.row-lab .th-range {
+      display: block;
+      font-size: 10.5px;
+      font-weight: 600;
+      color: #888;
+    }
+    .filter-cell {
+      border-radius: 10px;
+      padding: 12px 8px;
+      text-align: center;
+      min-width: 100px;
+      vertical-align: middle;
+      border: 1px solid transparent;
+    }
+    .filter-cell.included {
+      background: #f3ddd0;
+      color: #5c3d2e;
+      border-color: #e8c4b0;
+    }
+    .filter-cell.excluded {
+      background: #f0f1f5;
+      color: #9aa0b0;
+      border-color: #e5e7f0;
+    }
+    .filter-cell .fc-state {
+      font-size: 13px;
+      font-weight: 700;
+    }
+    .filter-cell .fc-combo {
+      font-size: 10.5px;
+      margin-top: 4px;
+      opacity: 0.85;
+    }
+    .filter-cell .fc-data {
+      font-size: 11px;
+      font-weight: 700;
+      margin-top: 6px;
+    }
+    .level-summary {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+      margin-top: 14px;
+    }
+    @media (max-width: 700px) {
+      .level-summary { grid-template-columns: repeat(2, 1fr); }
+    }
+    .level-card {
+      border-radius: 12px;
+      padding: 12px;
+      border: 1px solid #e5e7f0;
+      background: #fafbff;
+    }
+    .level-card .lc-name {
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .level-card .lc-range {
+      font-size: 12px;
+      color: #555;
+      margin-top: 6px;
+      line-height: 1.4;
+    }
+    .level-card .lc-sum {
+      font-size: 18px;
+      font-weight: 700;
+      margin-top: 8px;
+      font-variant-numeric: tabular-nums;
+      color: #1a1a2e;
+    }
+    .prio-sum-table th .th-sub,
+    .prio-sum-table .th-sub {
+      display: block;
+      font-size: 11px;
+      font-weight: 600;
+      color: #888;
+      margin-top: 2px;
+    }
+    .prio-sum-table td.prio-sum-cell {
+      text-align: center;
+      vertical-align: middle;
+      border-radius: 10px;
+      min-width: 96px;
+    }
+    .prio-sum-table .psum {
+      font-size: 15px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+    }
+    .prio-sum-table .plines {
+      font-size: 11px;
+      opacity: 0.85;
+      margin-top: 2px;
+      font-weight: 600;
+    }
+    .prio-sum-table tr.prio-row-ex,
+    .prio-sum-table td.prio-cell-ex {
+      opacity: 0.4;
+    }
+    .prio-heat-1d {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+    }
+    .prio-heat-1d .prio-sum-cell {
+      border-radius: 12px;
+      padding: 16px 12px;
+      text-align: center;
+      border: 1px solid transparent;
+    }
+    .decision-table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 6px;
+      font-size: 12px;
+    }
+    .decision-table th {
+      font-weight: 700;
+      color: #444;
+      padding: 8px 6px;
+      text-align: center;
+      vertical-align: bottom;
+    }
+    .decision-table th .th-w {
+      display: block;
+      font-size: 11px;
+      font-weight: 600;
+      color: #888;
+      margin-top: 2px;
+    }
+    .decision-table td.row-lab {
+      text-align: left;
+      font-weight: 700;
+      white-space: nowrap;
+      padding-right: 10px;
+      color: #333;
+    }
+    .decision-table td.row-lab .th-w {
+      display: block;
+      font-size: 11px;
+      font-weight: 600;
+      color: #888;
+    }
+    .decision-cell {
+      border-radius: 10px;
+      padding: 14px 10px;
+      text-align: center;
+      min-width: 88px;
+      border: 1px solid #e8eaf0;
+      vertical-align: middle;
+    }
+    .decision-cell .dc-score {
+      font-size: 18px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      color: #1a1a2e;
+    }
+    .decision-cell .dc-level {
+      font-size: 12px;
+      font-weight: 700;
+      margin-top: 4px;
+    }
+    .decision-cell.lvl-Low { background: #fff; }
+    .decision-cell.lvl-Low .dc-level { color: #888; }
+    .decision-cell.lvl-Medium { background: #e8f5e9; border-color: #c8e6c9; }
+    .decision-cell.lvl-Medium .dc-level { color: #2e7d32; }
+    .decision-cell.lvl-High { background: #fde8e4; border-color: #f5c6bc; }
+    .decision-cell.lvl-High .dc-level { color: #c0392b; }
+    .decision-cell.lvl-Urgent { background: #fff6e0; border-color: #f0d78c; }
+    .decision-cell.lvl-Urgent .dc-level { color: #b8860b; }
+    .decision-cards {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+      margin-top: 14px;
+    }
+    @media (max-width: 700px) {
+      .decision-cards { grid-template-columns: repeat(2, 1fr); }
+    }
+    .decision-card {
+      border-radius: 12px;
+      padding: 14px 16px;
+      border: 1px solid #e5e7f0;
+      background: #fff;
+    }
+    .decision-card .dc-name {
+      font-size: 13px;
+      font-weight: 700;
+      color: #666;
+    }
+    .decision-card .dc-count {
+      font-size: 28px;
+      font-weight: 700;
+      margin-top: 6px;
+      font-variant-numeric: tabular-nums;
+      color: #1a1a2e;
+    }
+    .decision-card.lvl-Low { background: #fff; border-color: #d8dce8; }
+    .decision-card.lvl-Medium { background: #e8f5e9; border-color: #a5d6a7; }
+    .decision-card.lvl-High { background: #fde8e4; border-color: #ef9a9a; }
+    .decision-card.lvl-Urgent { background: #fff6e0; border-color: #ffe082; }
+    .how-read {
+      margin-top: 14px;
+      padding: 14px 16px;
+      background: #f5f6fa;
+      border-radius: 12px;
+      font-size: 13px;
+      color: #444;
+      line-height: 1.45;
+    }
+    .how-read b { color: #1a1a2e; }
+    .weight-controls {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+      margin-top: 14px;
+    }
+    @media (max-width: 800px) {
+      .weight-controls { grid-template-columns: 1fr; }
+    }
+    .criteria-table th:nth-child(1),
+    .criteria-table td:nth-child(1),
+    .criteria-table th:nth-child(2),
+    .criteria-table td:nth-child(2) { text-align: left; }
+    .criteria-summary {
+      margin-top: 12px;
+      padding: 10px 12px;
+      background: #f7f8fc;
+      border-radius: 10px;
+      font-size: 12.5px;
+      line-height: 1.5;
+      color: #333;
+    }
+    .criteria-summary b { color: #2649B2; }
+    .prio-zone-select {
+      width: 100%;
+      padding: 8px 10px;
+      border: 1px solid #d8dce8;
+      border-radius: 8px;
+      font-size: 13px;
+      font-family: inherit;
+      font-weight: 700;
+      background: #fff;
+    }
+    .prio-dist {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+      margin-top: 4px;
+    }
+    @media (max-width: 700px) {
+      .prio-dist { grid-template-columns: repeat(2, 1fr); }
+    }
+    .prio-dist-card {
+      border-radius: 10px;
+      padding: 12px;
+      color: #fff;
+      min-height: 88px;
+    }
+    .prio-dist-card .pd-name {
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      opacity: 0.95;
+    }
+    .prio-dist-card .pd-val {
+      font-size: 20px;
+      font-weight: 700;
+      margin-top: 4px;
+    }
+    .prio-dist-card .pd-sub {
+      font-size: 11px;
+      margin-top: 4px;
+      opacity: 0.9;
+    }
+    .prio-dist-card.light-text { color: #1a1a2e; }
+
+    .eisenhower { margin-top: 14px; }
+    .eisen-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      grid-template-rows: 1fr 1fr;
+      gap: 8px;
+      min-height: 260px;
+    }
+    .eisen-cell {
+      border-radius: 12px;
+      padding: 14px;
+      color: #fff;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      min-height: 120px;
+      border: 2px solid transparent;
+    }
+    .eisen-cell.light { color: #1a1a2e; }
+    .eisen-cell .ec-title {
+      font-size: 13px;
+      font-weight: 700;
+    }
+    .eisen-cell .ec-rule {
+      font-size: 11px;
+      opacity: 0.9;
+      margin-top: 4px;
+      line-height: 1.35;
+    }
+    .eisen-cell .ec-stats {
+      margin-top: 10px;
+      font-size: 18px;
+      font-weight: 700;
+    }
+    .eisen-cell .ec-sub {
+      font-size: 11px;
+      opacity: 0.9;
+    }
+    .eisen-axes {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 8px;
+      font-size: 11px;
+      color: #888;
+    }
+    .eisen-y-label {
+      font-size: 11px;
+      color: #888;
+      margin-top: 4px;
+    }
+
+    .locked-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+      gap: 14px;
+    }
+    .locked-card {
+      border: 1px solid #eee;
+      border-radius: 10px;
+      padding: 14px;
+      background: #fafbff;
+      position: relative;
+    }
+    .locked-card h3 {
+      margin: 0;
+      font-size: 14px;
+      color: #2649B2;
+    }
+    .locked-card .thr {
+      font-size: 20px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    .locked-card .meta {
+      font-size: 12px;
+      color: #666;
+      margin-bottom: 10px;
+      line-height: 1.4;
+    }
+    .section-title-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin: 0 0 12px;
+    }
+    .section-title-row .section-title { margin: 0; }
+    .btn-clear-all {
+      appearance: none;
+      border: 1px solid #C0392B;
+      background: #fff;
+      color: #C0392B;
+      border-radius: 10px;
+      padding: 9px 14px;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .btn-clear-all:hover { background: #fdecea; }
+    .btn-clear-all:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+    .locked-card-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+    .locked-card-head h3 {
+      margin: 0;
+      font-size: 14px;
+      color: #2649B2;
+      padding-right: 0;
+    }
+    .btn-remove-lock {
+      appearance: none;
+      flex-shrink: 0;
+      border: 1px solid #C0392B;
+      background: #C0392B;
+      color: #fff;
+      border-radius: 6px;
+      padding: 6px 12px;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .btn-remove-lock:hover { filter: brightness(1.08); }
+    .locked-card .thr {
+      font-size: 20px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    .hidden { display: none !important; }
+    .footnote {
+      margin-top: 8px;
+      font-size: 12px;
+      color: #888;
+    }
+    .view.hidden { display: none !important; }
+    .coverage-grid {
+      display: grid;
+      grid-template-columns: 1.35fr 1fr;
+      gap: 16px;
+    }
+    @media (max-width: 900px) { .coverage-grid { grid-template-columns: 1fr; } }
+    .coverage-box {
+      border: 1px solid #eee;
+      border-radius: 10px;
+      padding: 14px 16px 10px;
+      background: #fafbff;
+      min-height: 320px;
+      position: relative;
+    }
+    .coverage-box .chart-title { margin-bottom: 2px; }
+    .coverage-box .chart-subtitle { margin-bottom: 10px; line-height: 1.4; }
+    .coverage-box canvas { width: 100% !important; height: 260px !important; }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <h1>Auto Credit/Write Off Threshold Explorer</h1>
+    <p class="sub">Interactive threshold playbook with the same chart style as the COOP / Logistics one-pagers. Lock a threshold, then try another to compare.</p>
+    <div class="tabs">
+      <button type="button" class="tab active" data-tab="coop">COOP</button>
+      <button type="button" class="tab" data-tab="logistics">Logistics Claims</button>
+      <button type="button" class="tab" data-tab="priority">Priority / Urgency</button>
+    </div>
+  </div>
+
+  <div class="wrap">
+    <!-- ===================== COOP TAB ===================== -->
+    <div id="view-coop" class="view">
+      <div class="panel upload-panel">
+        <div id="drop-coop" class="drop" tabindex="0">
+          <div>Drop an Excel file here, or click to choose</div>
+          <div class="hint">Any .xlsx / .xls / .csv · data is saved in this browser for next visit</div>
+          <div id="meta-coop" class="file-meta"></div>
+        </div>
+        <input id="file-coop" type="file" accept=".xlsx,.xls,.csv" hidden />
+        <div id="status-coop" class="status"></div>
+        <div class="upload-actions">
+          <button type="button" class="action ghost" data-forget-data="coop">Forget saved COOP data</button>
+        </div>
+      </div>
+
+      <div id="app-coop" class="hidden">
+        <div class="panel controls-panel">
+          <div class="controls-top">
+            <div class="mode-row" id="mode-coop" data-ds="coop">
+              <button type="button" class="mode-chip active" data-mode="under">Under ≤ amount</button>
+              <button type="button" class="mode-chip" data-mode="between">Between two amounts</button>
+            </div>
+            <button type="button" class="mode-chip option-chip" id="exclude-neg-coop" data-exclude-neg="coop">Exclude negative amounts</button>
+          </div>
+          <div class="controls-grid">
+            <div class="control-card">
+              <h3>Threshold</h3>
+              <div id="under-fields-coop" class="amount-fields single">
+                <div class="threshold-row">
+                  <div>
+                    <label for="thr-coop">Amount ($)</label>
+                    <input id="thr-coop" type="number" min="0" step="1" value="400" />
+                  </div>
+                  <div class="slider-wrap">
+                    <label class="visually-hidden" for="thr-slider-coop">Threshold slider</label>
+                    <input id="thr-slider-coop" type="range" min="0" max="5000" step="10" value="400" />
+                  </div>
+                </div>
+              </div>
+              <div id="between-fields-coop" class="amount-fields hidden-mode">
+                <div>
+                  <label for="thr-min-coop">From ($)</label>
+                  <input id="thr-min-coop" type="number" min="0" step="1" value="0" />
+                </div>
+                <div>
+                  <label for="thr-max-coop">To ($)</label>
+                  <input id="thr-max-coop" type="number" min="0" step="1" value="400" />
+                </div>
+              </div>
+              <div class="slider-meta">
+                <div class="amount-hint" id="amount-hint-coop">Counts when |Amount| ≤ threshold</div>
+              </div>
+            </div>
+            <div class="control-card">
+              <h3>Filters</h3>
+              <div class="filter-grid">
+                <div class="filter-field">
+                  <label>Year</label>
+                  <div class="msel" id="year-coop" data-msel data-all-label="All years"></div>
+                </div>
+                <div class="filter-field">
+                  <label>Month</label>
+                  <div class="msel" id="month-coop" data-msel data-all-label="All months"></div>
+                </div>
+                <div class="filter-field">
+                  <label>Division</label>
+                  <div class="msel" id="div-coop" data-msel data-all-label="All divisions"></div>
+                </div>
+              </div>
+              <div class="filter-hint">Open each dropdown and check one or more. Empty = all.</div>
+            </div>
+          </div>
+          <div class="controls-footer">
+            <div class="preset-group">
+              <span class="preset-label">Presets</span>
+              <button type="button" class="action preset" data-preset="coop" data-v="400">$400</button>
+              <button type="button" class="action preset" data-preset="coop" data-v="100">$100</button>
+              <button type="button" class="action preset" data-preset="coop" data-v="50">$50</button>
+            </div>
+            <div class="action-group">
+              <button type="button" class="action lock" id="lock-coop">Lock this threshold</button>
+              <button type="button" class="btn-clear-all" id="clear-coop" data-clear-locks="coop">Clear all locks</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="kpis" id="kpis-coop"></div>
+
+        <div class="panel">
+          <div class="section-title">Coverage vs threshold</div>
+          <div class="coverage-grid">
+            <div class="coverage-box">
+              <div class="chart-head">
+                <div>
+                  <div class="chart-title">Overall coverage curve</div>
+                  <div class="chart-subtitle">Dashed line = current $X. Hollow dots appear only for locked thresholds (both charts) and clear when you Remove a lock.</div>
+                </div>
+                <button type="button" class="dl-btn" data-dl-canvas="cov-overall-coop" data-dl-name="coop-coverage-overall">Download</button>
+              </div>
+              <canvas id="cov-overall-coop"></canvas>
+            </div>
+            <div class="coverage-box">
+              <div class="chart-head">
+                <div>
+                  <div class="chart-title">% lines by Division</div>
+                  <div class="chart-subtitle">Same sweep, one curve per division — whether one threshold works across CPD / PPD / LPD / LDB.</div>
+                </div>
+                <button type="button" class="dl-btn" data-dl-canvas="cov-group-coop" data-dl-name="coop-coverage-by-division">Download</button>
+              </div>
+              <canvas id="cov-group-coop"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="section-title">Live charts — by Division</div>
+          <div class="charts" id="charts-coop"></div>
+          <div class="footnote">Bar width scaled to sqrt(value); labels show Threshold ÷ Total %. Accent color matches COOP one-pager (#B55CE6).</div>
+        </div>
+
+        <div class="panel">
+          <div class="section-title-row">
+            <div class="section-title">Locked thresholds</div>
+            <button type="button" class="btn-clear-all" data-clear-locks="coop">Clear all locks</button>
+          </div>
+          <div id="empty-coop" class="empty">No locked thresholds yet. Click “Lock this threshold” above — each card gets a red <b>Remove</b> button.</div>
+          <div id="locks-coop" class="locked-grid"></div>
+        </div>
+
+        <div class="panel">
+          <div class="section-title">Detail table — Division × Reason Code</div>
+          <div style="overflow:auto">
+            <table class="data" id="table-coop"></table>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="section-title">Top clients — Customer × Division</div>
+          <div style="overflow:auto">
+            <table class="data clients-matrix" id="table-clients-coop"></table>
+          </div>
+          <div class="table-note" id="note-clients-coop"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================== LOGISTICS TAB ===================== -->
+    <div id="view-logistics" class="view hidden">
+      <div class="panel upload-panel">
+        <div id="drop-logistics" class="drop" tabindex="0">
+          <div>Drop an Excel file here, or click to choose</div>
+          <div class="hint">Any .xlsx / .xls / .csv · data is saved in this browser for next visit</div>
+          <div id="meta-logistics" class="file-meta"></div>
+        </div>
+        <input id="file-logistics" type="file" accept=".xlsx,.xls,.csv" hidden />
+        <div id="status-logistics" class="status"></div>
+        <div class="upload-actions">
+          <button type="button" class="action ghost" data-forget-data="logistics">Forget saved Logistics data</button>
+        </div>
+      </div>
+
+      <div id="app-logistics" class="hidden">
+        <div class="panel controls-panel">
+          <div class="controls-top">
+            <div class="mode-row" id="mode-logistics" data-ds="logistics">
+              <button type="button" class="mode-chip active" data-mode="under">Under ≤ amount</button>
+              <button type="button" class="mode-chip" data-mode="between">Between two amounts</button>
+            </div>
+            <button type="button" class="mode-chip option-chip" id="exclude-neg-logistics" data-exclude-neg="logistics">Exclude negative amounts</button>
+          </div>
+          <div class="controls-grid">
+            <div class="control-card">
+              <h3>Threshold</h3>
+              <div id="under-fields-logistics" class="amount-fields single">
+                <div class="threshold-row">
+                  <div>
+                    <label for="thr-logistics">Amount ($)</label>
+                    <input id="thr-logistics" type="number" min="0" step="1" value="250" />
+                  </div>
+                  <div class="slider-wrap">
+                    <label class="visually-hidden" for="thr-slider-logistics">Threshold slider</label>
+                    <input id="thr-slider-logistics" type="range" min="0" max="5000" step="10" value="250" />
+                  </div>
+                </div>
+              </div>
+              <div id="between-fields-logistics" class="amount-fields hidden-mode">
+                <div>
+                  <label for="thr-min-logistics">From ($)</label>
+                  <input id="thr-min-logistics" type="number" min="0" step="1" value="0" />
+                </div>
+                <div>
+                  <label for="thr-max-logistics">To ($)</label>
+                  <input id="thr-max-logistics" type="number" min="0" step="1" value="250" />
+                </div>
+              </div>
+              <div class="slider-meta">
+                <div class="amount-hint" id="amount-hint-logistics">Default $250 matches Logistics proposal band</div>
+              </div>
+            </div>
+            <div class="control-card">
+              <h3>Filters</h3>
+              <div class="filter-grid">
+                <div class="filter-field">
+                  <label>Year</label>
+                  <div class="msel" id="year-logistics" data-msel data-all-label="All years"></div>
+                </div>
+                <div class="filter-field">
+                  <label>Month</label>
+                  <div class="msel" id="month-logistics" data-msel data-all-label="All months"></div>
+                </div>
+                <div class="filter-field">
+                  <label>Division</label>
+                  <div class="msel" id="div-logistics" data-msel data-all-label="All divisions"></div>
+                </div>
+              </div>
+              <div class="filter-hint">Open each dropdown and check one or more. Empty = all.</div>
+              <div class="reason-field">
+                <label>Reason codes</label>
+                <div class="msel wide-panel" id="type-logistics" data-msel data-all-label="All reason codes"></div>
+                <div class="filter-hint">Check one or more. Empty = all reason codes in the file.</div>
+              </div>
+            </div>
+          </div>
+          <div class="controls-footer">
+            <div class="preset-group">
+              <span class="preset-label">Presets</span>
+              <button type="button" class="action preset" data-preset="logistics" data-v="250">$250</button>
+              <button type="button" class="action preset" data-preset="logistics" data-v="1500">$1,500</button>
+              <button type="button" class="action preset" data-preset="logistics" data-v="100">$100</button>
+            </div>
+            <div class="action-group">
+              <button type="button" class="action lock" id="lock-logistics">Lock this threshold</button>
+              <button type="button" class="btn-clear-all" id="clear-logistics" data-clear-locks="logistics">Clear all locks</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="kpis" id="kpis-logistics"></div>
+
+        <div class="panel">
+          <div class="section-title">Coverage vs threshold</div>
+          <div class="coverage-grid">
+            <div class="coverage-box">
+              <div class="chart-head">
+                <div>
+                  <div class="chart-title">Overall coverage curve</div>
+                  <div class="chart-subtitle">Dashed line = current $X. Hollow dots appear only for locked thresholds (both charts) and clear when you Remove a lock.</div>
+                </div>
+                <button type="button" class="dl-btn" data-dl-canvas="cov-overall-logistics" data-dl-name="logistics-coverage-overall">Download</button>
+              </div>
+              <canvas id="cov-overall-logistics"></canvas>
+            </div>
+            <div class="coverage-box">
+              <div class="chart-head">
+                <div>
+                  <div class="chart-title">% lines by Reason Code</div>
+                  <div class="chart-subtitle">Same sweep, one curve per reason code found in the file (R02, R03, R04, R05, R16, R17, …).</div>
+                </div>
+                <button type="button" class="dl-btn" data-dl-canvas="cov-group-logistics" data-dl-name="logistics-coverage-by-type">Download</button>
+              </div>
+              <canvas id="cov-group-logistics"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="section-title">Live charts — by Reason Code</div>
+          <div class="charts" id="charts-logistics"></div>
+          <div class="footnote">Bar width scaled to sqrt(value); labels show Threshold ÷ Total %. Accent color matches Logistics one-pager (#C98A2C).</div>
+        </div>
+
+        <div class="panel">
+          <div class="section-title">Live charts — by Division (each reason code)</div>
+          <div id="charts-logistics-by-div"></div>
+          <div class="footnote">One pair of charts per selected reason code, broken down by division (CPD / PPD / LPD / LDB).</div>
+        </div>
+
+        <div class="panel">
+          <div class="section-title-row">
+            <div class="section-title">Locked thresholds</div>
+            <button type="button" class="btn-clear-all" data-clear-locks="logistics">Clear all locks</button>
+          </div>
+          <div id="empty-logistics" class="empty">No locked thresholds yet. Click “Lock this threshold” above — each card gets a red <b>Remove</b> button.</div>
+          <div id="locks-logistics" class="locked-grid"></div>
+        </div>
+
+        <div class="panel">
+          <div class="section-title">Detail table — Division × Reason Code</div>
+          <div style="overflow:auto">
+            <table class="data" id="table-logistics"></table>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="section-title">Top clients — Customer × Division</div>
+          <div style="overflow:auto">
+            <table class="data clients-matrix" id="table-clients-logistics"></table>
+          </div>
+          <div class="table-note" id="note-clients-logistics"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================== PRIORITY / URGENCY TAB ===================== -->
+    <div id="view-priority" class="view hidden">
+      <div class="panel priority-panel">
+        <div class="section-title">Priority explorer</div>
+        <p class="priority-sub"><b>No weighting.</b> Choose whether priority uses <b>Amount</b>, <b>Days in arrears</b>, or <b>both (AND)</b>. Set Low / Medium / High / Urgent starts for each factor. Values below Low starts are outside the four tiers.</p>
+
+        <div class="filter-field" style="max-width:320px;margin-bottom:12px">
+          <label>Filter reason codes (optional)</label>
+          <div class="msel wide-panel" id="prio-reasons" data-msel data-all-label="All reason codes"></div>
+        </div>
+        <div class="table-note" id="prio-days-note" style="margin-bottom:12px"></div>
+
+        <div class="indep-mode-bar">
+          <span class="indep-mode-note">What should determine priority?</span>
+          <div class="mode-row prio-enter-toggle" id="prio-mode-criteria">
+            <button type="button" class="mode-chip" data-prio="amount">Amount only</button>
+            <button type="button" class="mode-chip" data-prio="days">Days only</button>
+            <button type="button" class="mode-chip active" data-prio="both">Both (AND)</button>
+          </div>
+        </div>
+
+        <div class="indep-filters">
+          <div class="indep-card" id="prio-amount-card">
+            <h4>Amount <span class="indep-sub">(|Amount| $)</span></h4>
+            <div class="indep-row">
+              <span class="indep-lab">Low starts</span>
+              <input id="amt-low" type="range" min="0" max="20000" step="10" value="0" />
+              <span class="indep-val" id="amt-low-val">$0</span>
+            </div>
+            <div class="indep-row">
+              <span class="indep-lab">Medium starts</span>
+              <input id="amt-med" type="range" min="0" max="20000" step="10" value="100" />
+              <span class="indep-val" id="amt-med-val">$100</span>
+            </div>
+            <div class="indep-row">
+              <span class="indep-lab">High starts</span>
+              <input id="amt-high" type="range" min="0" max="20000" step="10" value="400" />
+              <span class="indep-val" id="amt-high-val">$400</span>
+            </div>
+            <div class="indep-row">
+              <span class="indep-lab">Urgent starts</span>
+              <input id="amt-urgent" type="range" min="0" max="20000" step="10" value="1500" />
+              <span class="indep-val" id="amt-urgent-val">$1,500</span>
+            </div>
+            <button type="button" class="action" id="prio-snap-amt" style="margin-top:10px">Snap Amount cuts to data</button>
+          </div>
+
+          <div class="indep-card" id="prio-priority-card">
+            <h4>Days in arrears</h4>
+            <div class="indep-row">
+              <span class="indep-lab">Low starts</span>
+              <input id="pri-low" type="range" min="0" max="365" step="1" value="0" />
+              <span class="indep-val" id="pri-low-val">0d</span>
+            </div>
+            <div class="indep-row">
+              <span class="indep-lab">Medium starts</span>
+              <input id="pri-med" type="range" min="0" max="365" step="1" value="30" />
+              <span class="indep-val" id="pri-med-val">30d</span>
+            </div>
+            <div class="indep-row">
+              <span class="indep-lab">High starts</span>
+              <input id="pri-high" type="range" min="0" max="365" step="1" value="60" />
+              <span class="indep-val" id="pri-high-val">60d</span>
+            </div>
+            <div class="indep-row">
+              <span class="indep-lab">Urgent starts</span>
+              <input id="pri-urgent" type="range" min="0" max="365" step="1" value="90" />
+              <span class="indep-val" id="pri-urgent-val">90d</span>
+            </div>
+            <button type="button" class="action" id="prio-snap-days" style="margin-top:10px">Snap Days cuts to data</button>
+          </div>
+        </div>
+
+        <div class="heat-card" style="margin-top:16px">
+          <div class="filter-heat-head">
+            <div>
+              <h4 id="prio-heat-title" style="margin:0">Priority heatmap</h4>
+              <div class="heat-caption" id="prio-heat-cap" style="margin:4px 0 0">Each cell shows the total sum of |Amount| in that bucket.</div>
+            </div>
+            <div class="min-level-wrap">
+              <label for="prio-min-level">Minimum level</label>
+              <select id="prio-min-level">
+                <option value="0" selected>Low+</option>
+                <option value="1">Medium+</option>
+                <option value="2">High+</option>
+                <option value="3">Urgent</option>
+              </select>
+            </div>
+          </div>
+          <div id="prio-heatmap" style="overflow:auto"></div>
+          <div id="prio-level-cards" class="level-summary"></div>
+          <div class="table-note" id="prio-status" style="margin-top:10px"></div>
+        </div>
+
+        <div class="heat-card" style="margin-top:14px">
+          <h4>Included lines — detail</h4>
+          <div style="overflow:auto">
+            <table class="data" id="prio-bucket-table"></table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const MONTH_NAMES = [
+      "January","February","March","April","May","June",
+      "July","August","September","October","November","December",
+    ];
+
+    const DIVISION_MAP = {
+      "02AA": "CPD",
+      "02AB": "PPD",
+      "02AC": "LPD",
+      "02AD": "LDB",
+    };
+    const DIVISION_ORDER = ["CPD", "PPD", "LPD", "LDB"];
+
+    const TYPE_MAP = {
+      R02: "Shortage (R02)",
+      R03: "PRX (R03)",
+      R04: "Freight / Unloading (R04)",
+      R05: "Returns (R05)",
+      R16: "FAC (R16)",
+      R17: "Short Payment (R17)",
+    };
+    const REASON_ORDER = ["R02", "R03", "R04", "R05", "R16", "R17"];
+    const TYPE_ORDER = REASON_ORDER.map((r) => TYPE_MAP[r] || r);
+
+    const PRIORITY_LEVELS = ["Low", "Medium", "High", "Urgent"];
+    const PRIORITY_COLORS = {
+      Low: "#7EB8A8",
+      Medium: "#E8C468",
+      High: "#E09A5C",
+      Urgent: "#C0392B",
+    };
+
+    const AMOUNT_HEAT_BINS = [
+      { lo: 0, hi: 100, label: "$0–100" },
+      { lo: 100, hi: 400, label: "$100–400" },
+      { lo: 400, hi: 1000, label: "$400–1k" },
+      { lo: 1000, hi: 5000, label: "$1k–5k" },
+      { lo: 5000, hi: 20000, label: "$5k–20k" },
+      { lo: 20000, hi: Infinity, label: "$20k+" },
+    ];
+    const DAYS_HEAT_BINS = [
+      { lo: -Infinity, hi: 0, label: "≤0d" },
+      { lo: 0, hi: 30, label: "0–30d" },
+      { lo: 30, hi: 60, label: "30–60d" },
+      { lo: 60, hi: 90, label: "60–90d" },
+      { lo: 90, hi: 180, label: "90–180d" },
+      { lo: 180, hi: 365, label: "180–365d" },
+      { lo: 365, hi: Infinity, label: "365d+" },
+    ];
+
+    const THEME = {
+      coop: { total: "#2649B2", thr: "#B55CE6" },
+      logistics: { total: "#2649B2", thr: "#C98A2C" },
+    };
+
+    const GROUP_COLORS = ["#2649B2", "#B55CE6", "#C98A2C", "#1E6B6B", "#8B4513", "#5B4B8A"];
+
+    const datasets = {
+      coop: makeDataset("coop", 400),
+      logistics: makeDataset("logistics", 250),
+    };
+
+    function makeDataset(id, defaultThr) {
+      return {
+        id,
+        rows: [],
+        locks: [],
+        nextLockId: 1,
+        defaultThr,
+        amountMode: "under", // "under" | "between"
+        excludeNegatives: false,
+        fileMeta: null, // { fileName, sheetName, savedAt }
+        coverageCache: null,
+        coverageCharts: { overall: null, group: null },
+        _saveTimer: null,
+      };
+    }
+
+    const priorityState = {
+      mode: "both", // amount | days | both
+      minLevel: 0,  // 0=Low+ … 3=Urgent
+    };
+
+
+    const DB_NAME = "threshold-explorer";
+    const DB_STORE = "datasets";
+    const DB_VERSION = 1;
+
+    function openDb() {
+      return new Promise((resolve, reject) => {
+        const req = indexedDB.open(DB_NAME, DB_VERSION);
+        req.onupgradeneeded = () => {
+          const db = req.result;
+          if (!db.objectStoreNames.contains(DB_STORE)) {
+            db.createObjectStore(DB_STORE);
+          }
+        };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+    }
+
+    async function idbPut(key, value) {
+      const db = await openDb();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(DB_STORE, "readwrite");
+        tx.objectStore(DB_STORE).put(value, key);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
+    }
+
+    async function idbGet(key) {
+      const db = await openDb();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(DB_STORE, "readonly");
+        const req = tx.objectStore(DB_STORE).get(key);
+        req.onsuccess = () => resolve(req.result || null);
+        req.onerror = () => reject(req.error);
+      });
+    }
+
+    async function idbDelete(key) {
+      const db = await openDb();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(DB_STORE, "readwrite");
+        tx.objectStore(DB_STORE).delete(key);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
+    }
+
+    function captureUiState(ds) {
+      const sels = filterSelections(ds);
+      return {
+        amountMode: ds.amountMode,
+        excludeNegatives: !!ds.excludeNegatives,
+        thr: $(`thr-${ds.id}`).value,
+        thrMin: $(`thr-min-${ds.id}`).value,
+        thrMax: $(`thr-max-${ds.id}`).value,
+        sliderMax: $(`thr-slider-${ds.id}`).max,
+        years: sels.years,
+        months: sels.months,
+        divisions: sels.divisions,
+        typeFocus: ds.id === "logistics" ? selectedValues("type-logistics") : null,
+        locks: ds.locks,
+        nextLockId: ds.nextLockId,
+      };
+    }
+
+    function buildPersistPayload(ds) {
+      return {
+        rows: ds.rows,
+        fileMeta: ds.fileMeta,
+        ui: captureUiState(ds),
+        savedAt: new Date().toISOString(),
+      };
+    }
+
+    function schedulePersist(ds) {
+      if (!ds.rows.length) return;
+      clearTimeout(ds._saveTimer);
+      ds._saveTimer = setTimeout(() => {
+        persistDataset(ds).catch((err) => console.warn("Persist failed:", err));
+      }, 400);
+    }
+
+    async function persistDataset(ds) {
+      if (!ds.rows.length) return;
+      await idbPut(ds.id, buildPersistPayload(ds));
+    }
+
+    function applyUiState(ds, ui) {
+      if (!ui) return;
+      ds.amountMode = ui.amountMode === "between" ? "between" : "under";
+      ds.excludeNegatives = !!ui.excludeNegatives;
+      ds.locks = Array.isArray(ui.locks) ? ui.locks : [];
+      syncExcludeNegUi(ds);
+      ds.nextLockId = ui.nextLockId || (ds.locks.reduce((m, l) => Math.max(m, l.id || 0), 0) + 1);
+
+      if (ui.sliderMax) $(`thr-slider-${ds.id}`).max = String(ui.sliderMax);
+      if (ds.id === "logistics" && ui.typeFocus != null) {
+        // Migrate old single-select values
+        let reasons = ui.typeFocus;
+        if (reasons === "core") reasons = ["R02", "R03", "R05"];
+        else if (reasons === "all" || reasons === "") reasons = [];
+        else if (!Array.isArray(reasons)) reasons = [String(reasons)];
+        ds._pendingReasons = reasons;
+      }
+
+      populateFilters(ds);
+      setSelectedValues(`year-${ds.id}`, ui.years || []);
+      populateMonths(ds);
+      setSelectedValues(`month-${ds.id}`, ui.months || []);
+      setSelectedValues(`div-${ds.id}`, ui.divisions || []);
+
+      syncAmountModeUi(ds);
+
+      // Re-apply amounts after mode sync (which may copy thr ↔ max)
+      if (ui.thr != null) {
+        $(`thr-${ds.id}`).value = ui.thr;
+        $(`thr-slider-${ds.id}`).value = ui.thr;
+      }
+      if (ui.thrMin != null) $(`thr-min-${ds.id}`).value = ui.thrMin;
+      if (ui.thrMax != null) $(`thr-max-${ds.id}`).value = ui.thrMax;
+    }
+
+    async function restoreDataset(ds) {
+      const saved = await idbGet(ds.id);
+      if (!saved || !Array.isArray(saved.rows) || !saved.rows.length) return false;
+
+      ds.rows = saved.rows;
+      ds.fileMeta = saved.fileMeta || {
+        fileName: "Saved workbook",
+        sheetName: "SAPUI5 Export",
+      };
+      ds.coverageCache = null;
+      destroyCoverageCharts(ds);
+
+      applyUiState(ds, saved.ui);
+
+      $(`app-${ds.id}`).classList.remove("hidden");
+      const meta = $(`meta-${ds.id}`);
+      meta.classList.add("on");
+      const when = saved.savedAt ? new Date(saved.savedAt).toLocaleString() : "earlier";
+      meta.textContent =
+        `${ds.fileMeta.fileName || "Saved file"} · “${ds.fileMeta.sheetName || "sheet"}” · ` +
+        `${ds.rows.length.toLocaleString()} lines · restored from browser (${when})`;
+
+      const status = $(`status-${ds.id}`);
+      status.className = "status ok";
+      status.textContent = "Restored saved data from last visit. Drop a new file anytime to replace it.";
+
+      refresh(ds);
+      renderLocks(ds);
+      return true;
+    }
+
+    async function forgetDataset(ds) {
+      clearTimeout(ds._saveTimer);
+      await idbDelete(ds.id);
+      ds.rows = [];
+      ds.locks = [];
+      ds.nextLockId = 1;
+      ds.fileMeta = null;
+      ds.excludeNegatives = false;
+      ds.coverageCache = null;
+      destroyCoverageCharts(ds);
+      syncExcludeNegUi(ds);
+      $(`app-${ds.id}`).classList.add("hidden");
+      const meta = $(`meta-${ds.id}`);
+      meta.classList.remove("on");
+      meta.textContent = "";
+      const status = $(`status-${ds.id}`);
+      status.className = "status";
+      status.textContent = "Saved data cleared. Drop a file to start again.";
+      renderLocks(ds);
+    }
+
+    const $ = (id) => document.getElementById(id);
+
+    function triggerDownload(dataUrl, filename) {
+      const a = document.createElement("a");
+      a.href = dataUrl;
+      a.download = filename.endsWith(".png") ? filename : `${filename}.png`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    }
+
+    function downloadCanvasPng(canvas, filename) {
+      if (!canvas) return;
+      const tmp = document.createElement("canvas");
+      tmp.width = canvas.width;
+      tmp.height = canvas.height;
+      const ctx = tmp.getContext("2d");
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, tmp.width, tmp.height);
+      ctx.drawImage(canvas, 0, 0);
+      triggerDownload(tmp.toDataURL("image/png"), filename);
+    }
+
+    async function downloadElementPng(el, filename, btn) {
+      if (!el || typeof html2canvas !== "function") return;
+      if (btn) btn.disabled = true;
+      try {
+        const canvas = await html2canvas(el, {
+          backgroundColor: "#ffffff",
+          scale: 2,
+          logging: false,
+          useCORS: true,
+          ignoreElements: (node) =>
+            node.classList?.contains("dl-btn") || node.hasAttribute?.("data-dl-el-btn"),
+        });
+        triggerDownload(canvas.toDataURL("image/png"), filename);
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+    }
+
+    document.addEventListener("click", (e) => {
+      const canvasBtn = e.target.closest("[data-dl-canvas]");
+      if (canvasBtn) {
+        e.preventDefault();
+        const id = canvasBtn.getAttribute("data-dl-canvas");
+        const name = canvasBtn.getAttribute("data-dl-name") || id;
+        downloadCanvasPng($(id), name);
+        return;
+      }
+      const elBtn = e.target.closest("[data-dl-el-btn]");
+      if (elBtn) {
+        e.preventDefault();
+        const box = elBtn.closest("[data-dl-el]");
+        const name = elBtn.getAttribute("data-dl-name") || box?.getAttribute("data-dl-name") || "chart";
+        downloadElementPng(box, name, elBtn);
+        return;
+      }
+      const removeBtn = e.target.closest("[data-remove-lock]");
+      if (removeBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        const key = removeBtn.getAttribute("data-ds");
+        const id = Number(removeBtn.getAttribute("data-remove-lock"));
+        if (datasets[key]) removeLock(datasets[key], id);
+        return;
+      }
+      const clearBtn = e.target.closest("[data-clear-locks]");
+      if (clearBtn) {
+        e.preventDefault();
+        const key = clearBtn.getAttribute("data-clear-locks");
+        if (datasets[key]) clearAllLocks(datasets[key]);
+        return;
+      }
+      const forgetBtn = e.target.closest("[data-forget-data]");
+      if (forgetBtn) {
+        e.preventDefault();
+        const key = forgetBtn.getAttribute("data-forget-data");
+        if (datasets[key] && confirm(`Forget saved ${key === "coop" ? "COOP" : "Logistics"} data from this browser?`)) {
+          forgetDataset(datasets[key]).catch((err) => console.warn(err));
+        }
+        return;
+      }
+
+      // Multi-select dropdowns
+      const mselToggle = e.target.closest(".msel-toggle");
+      if (mselToggle) {
+        e.preventDefault();
+        const root = mselToggle.closest(".msel");
+        const wasOpen = root.classList.contains("open");
+        document.querySelectorAll(".msel.open").forEach((el) => el.classList.remove("open"));
+        if (!wasOpen) root.classList.add("open");
+        return;
+      }
+      const mselAll = e.target.closest("[data-msel-all]");
+      if (mselAll) {
+        e.preventDefault();
+        const root = mselAll.closest(".msel");
+        root.querySelectorAll(".msel-opt input").forEach((c) => { c.checked = true; });
+        updateMselLabel(root);
+        onMselChanged(root);
+        return;
+      }
+      const mselClear = e.target.closest("[data-msel-clear]");
+      if (mselClear) {
+        e.preventDefault();
+        const root = mselClear.closest(".msel");
+        root.querySelectorAll(".msel-opt input").forEach((c) => { c.checked = false; });
+        updateMselLabel(root);
+        onMselChanged(root);
+        return;
+      }
+      if (!e.target.closest(".msel")) {
+        document.querySelectorAll(".msel.open").forEach((el) => el.classList.remove("open"));
+      }
+    });
+
+    document.addEventListener("change", (e) => {
+      const input = e.target.closest(".msel-opt input");
+      if (!input) return;
+      const root = input.closest(".msel");
+      updateMselLabel(root);
+      onMselChanged(root);
+    });
+
+    function onMselChanged(root) {
+      if (!root || !root.id) return;
+      const id = root.id;
+      if (id === "prio-reasons") {
+        refreshPriority();
+        return;
+      }
+      let ds = null;
+      if (id.endsWith("-coop")) ds = datasets.coop;
+      else if (id.endsWith("-logistics") || id === "type-logistics") ds = datasets.logistics;
+      if (!ds || !ds.rows.length) return;
+      if (id.startsWith("year-")) populateMonths(ds);
+      refresh(ds);
+    }
+
+    function escapeHtml(s) {
+      return String(s)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    function moneyM(n) {
+      return (n / 1e6).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " M";
+    }
+
+    function moneyShort(n) {
+      const x = Number(n) || 0;
+      if (Math.abs(x) >= 1e6) return "$" + (x / 1e6).toFixed(2) + "M";
+      if (Math.abs(x) >= 1e3) {
+        const k = x / 1e3;
+        const s = Number.isInteger(k) || Math.abs(k) >= 10 ? k.toFixed(0) : k.toFixed(1);
+        return "$" + s + "K";
+      }
+      return "$" + Math.round(x).toLocaleString();
+    }
+
+    function pct(part, whole) {
+      if (!whole) return "0.0%";
+      return ((part / whole) * 100).toFixed(1) + "%";
+    }
+
+    function pctInt(part, whole) {
+      if (!whole) return "0%";
+      return Math.round((part / whole) * 100) + "%";
+    }
+
+    function sqrtScale(value, maxValue) {
+      if (!maxValue || value <= 0) return 0;
+      return Math.max(0.5, Math.sqrt(value / maxValue) * 100);
+    }
+
+    function findCol(headers, candidates) {
+      const norm = headers.map((h) => String(h || "").trim().toLowerCase());
+      for (const c of candidates) {
+        const i = norm.indexOf(c.toLowerCase());
+        if (i >= 0) return i;
+      }
+      for (const c of candidates) {
+        const i = norm.findIndex((h) => h.includes(c.toLowerCase()));
+        if (i >= 0) return i;
+      }
+      return -1;
+    }
+
+    function parseDateParts(d) {
+      let year = null, month = null;
+      if (d instanceof Date && !Number.isNaN(d.getTime())) {
+        year = d.getFullYear();
+        month = d.getMonth() + 1;
+      } else if (typeof d === "number") {
+        const parsed = XLSX.SSF.parse_date_code(d);
+        if (parsed) { year = parsed.y; month = parsed.m; }
+      } else if (typeof d === "string" && d) {
+        const m = d.match(/(20\d{2})[-/]?(\d{1,2})?/);
+        if (m) {
+          year = Number(m[1]);
+          if (m[2]) month = Number(m[2]);
+        }
+      }
+      return { year, month };
+    }
+
+    function divisionLabel(code) {
+      const c = String(code || "").trim();
+      if (!c || c === "null" || c === "undefined") return "Other";
+      return DIVISION_MAP[c] ? `${DIVISION_MAP[c]} (${c})` : c;
+    }
+
+    function divisionKey(code) {
+      const c = String(code || "").trim();
+      return DIVISION_MAP[c] || (c || "Other");
+    }
+
+    function typeLabel(reason) {
+      return TYPE_MAP[reason] || reason;
+    }
+
+    function sortReasonCodes(codes) {
+      return [...codes].sort((a, b) => {
+        const ia = REASON_ORDER.indexOf(a);
+        const ib = REASON_ORDER.indexOf(b);
+        if (ia >= 0 || ib >= 0) return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
+        return String(a).localeCompare(String(b));
+      });
+    }
+
+    function selectedReasonCodes() {
+      return selectedValues("type-logistics");
+    }
+
+    function excelSerialToDate(n) {
+      // Excel serial date (1900 date system) → JS Date (UTC noon to avoid DST edges)
+      const ms = Date.UTC(1899, 11, 30) + Math.round(n) * 86400000;
+      return new Date(ms);
+    }
+
+    function daysBetween(a, b) {
+      if (!(a instanceof Date) || !(b instanceof Date)) return null;
+      if (Number.isNaN(a.getTime()) || Number.isNaN(b.getTime())) return null;
+      return Math.round((b.getTime() - a.getTime()) / 86400000);
+    }
+
+    function parseCellDate(raw) {
+      if (raw === null || raw === undefined || raw === "") return null;
+      if (raw instanceof Date && !Number.isNaN(raw.getTime())) return raw;
+      if (typeof raw === "number" && Number.isFinite(raw)) {
+        if (raw > 20000) return excelSerialToDate(raw); // likely Excel serial
+        return null;
+      }
+      if (typeof raw === "string") {
+        const t = Date.parse(raw);
+        if (!Number.isNaN(t)) return new Date(t);
+      }
+      return null;
+    }
+
+    function parseDaysInArrears(raw) {
+      if (raw === null || raw === undefined || raw === "") return null;
+      if (typeof raw === "number" && Number.isFinite(raw)) {
+        // Large values are almost certainly Excel date serials, not day counts
+        if (Math.abs(raw) > 5000) return null;
+        return raw;
+      }
+      const s = String(raw).trim().replace(/,/g, "");
+      if (!s) return null;
+      // "45", "45.0", "45 days", "(12)"
+      const m = s.match(/-?\d+(\.\d+)?/);
+      if (!m) return null;
+      const n = Number(m[0]);
+      if (!Number.isFinite(n) || Math.abs(n) > 5000) return null;
+      return n;
+    }
+
+    function moneyExact(n) {
+      return "$" + Math.round(Number(n) || 0).toLocaleString();
+    }
+
+    function parseWorkbook(workbook) {
+      const sheetName = workbook.SheetNames.includes("SAPUI5 Export")
+        ? "SAPUI5 Export"
+        : workbook.SheetNames[0];
+      const sheet = workbook.Sheets[sheetName];
+      const data = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null, raw: true });
+      if (!data.length) throw new Error("Sheet is empty.");
+
+      const headers = data[0];
+      const amountIdx = findCol(headers, ["Amount (CoCode Crcy)", "Amount"]);
+      const reasonIdx = findCol(headers, ["Reason Code"]);
+      const baIdx = findCol(headers, ["Business Area", "Division"]);
+      const dateIdx = findCol(headers, ["Journal Entry Date", "Baseline Date"]);
+      const customerNameIdx = findCol(headers, ["Customer Name"]);
+      const customerIdIdx = findCol(headers, ["Customer"]);
+      const arrearsIdx = findCol(headers, [
+        "Days in Arrears",
+        "Days Arrears",
+        "Days Overdue",
+        "Overdue Days",
+        "Arrears Days",
+        "Arrear Days",
+        "Net Due Days",
+        "Aging",
+        "Age in Days",
+      ]);
+      const dueIdx = findCol(headers, [
+        "Net Due Date",
+        "Due Date",
+        "Baseline Date",
+        "Payment Due Date",
+        "Document Date",
+      ]);
+      // Journal / posting date used as aging fallback when no Days / Due column
+      const ageDateIdx = findCol(headers, [
+        "Journal Entry Date",
+        "Posting Date",
+        "Document Date",
+        "Baseline Date",
+      ]);
+
+      if (amountIdx < 0) throw new Error("Could not find Amount column.");
+      if (reasonIdx < 0) throw new Error("Could not find Reason Code column.");
+
+      const today = new Date();
+      const rows = [];
+      for (let i = 1; i < data.length; i++) {
+        const row = data[i];
+        if (!row) continue;
+        const raw = row[amountIdx];
+        if (raw === null || raw === undefined || raw === "") continue;
+        const amount = Number(raw);
+        if (!Number.isFinite(amount)) continue;
+        const { year, month } = dateIdx >= 0 ? parseDateParts(row[dateIdx]) : { year: null, month: null };
+        const ba = baIdx >= 0 ? row[baIdx] : null;
+        const reason = String(row[reasonIdx] ?? "(blank)").trim() || "(blank)";
+        const customerId = customerIdIdx >= 0
+          ? String(row[customerIdIdx] ?? "").trim()
+          : "";
+        let customerName = customerNameIdx >= 0
+          ? String(row[customerNameIdx] ?? "").trim()
+          : "";
+        if (!customerName) customerName = customerId || "(unknown)";
+
+        let daysInArrears = arrearsIdx >= 0 ? parseDaysInArrears(row[arrearsIdx]) : null;
+        if (daysInArrears == null && dueIdx >= 0) {
+          const due = parseCellDate(row[dueIdx]);
+          const derived = daysBetween(due, today);
+          if (derived != null) daysInArrears = derived;
+        }
+        if (daysInArrears == null && ageDateIdx >= 0) {
+          const ageFrom = parseCellDate(row[ageDateIdx]);
+          const derived = daysBetween(ageFrom, today);
+          if (derived != null) daysInArrears = derived;
+        }
+
+        rows.push({
+          amount,
+          absAmount: Math.abs(amount),
+          reason,
+          baCode: ba == null ? "" : String(ba).trim(),
+          division: divisionKey(ba),
+          divisionLabel: divisionLabel(ba),
+          typeLabel: typeLabel(reason),
+          year,
+          month,
+          customer: customerName,
+          customerId,
+          daysInArrears,
+        });
+      }
+      if (!rows.length) throw new Error("No usable Amount rows found.");
+      return { rows, sheetName };
+    }
+
+    function selectedValues(mselOrId) {
+      const root = typeof mselOrId === "string" ? $(mselOrId) : mselOrId;
+      if (!root) return [];
+      return [...root.querySelectorAll(".msel-opt input:checked")].map((c) => c.value);
+    }
+
+    function setSelectedValues(mselOrId, values) {
+      const root = typeof mselOrId === "string" ? $(mselOrId) : mselOrId;
+      if (!root) return;
+      const want = new Set((values || []).map(String));
+      root.querySelectorAll(".msel-opt input").forEach((c) => {
+        c.checked = want.has(c.value);
+      });
+      updateMselLabel(root);
+    }
+
+    function updateMselLabel(root) {
+      if (!root) return;
+      const allLabel = root.getAttribute("data-all-label") || "All";
+      const checked = [...root.querySelectorAll(".msel-opt input:checked")];
+      const toggle = root.querySelector(".msel-toggle");
+      if (!toggle) return;
+      if (!checked.length) {
+        toggle.textContent = allLabel;
+        return;
+      }
+      const labels = checked.map((c) => c.getAttribute("data-label") || c.value);
+      toggle.textContent = labels.length <= 2
+        ? labels.join(", ")
+        : `${labels[0]}, ${labels[1]} +${labels.length - 2}`;
+    }
+
+    function fillMsel(mselOrId, options, selectedValuesArr) {
+      const root = typeof mselOrId === "string" ? $(mselOrId) : mselOrId;
+      if (!root) return;
+      const allLabel = root.getAttribute("data-all-label") || "All";
+      const want = new Set((selectedValuesArr || []).map(String));
+      root.innerHTML = `
+        <button type="button" class="msel-toggle" aria-haspopup="listbox">${escapeHtml(allLabel)}</button>
+        <div class="msel-panel" role="listbox">
+          <div class="msel-actions">
+            <button type="button" data-msel-all>Select all</button>
+            <button type="button" data-msel-clear>Clear</button>
+          </div>
+          ${options.map((opt) => {
+            const value = String(opt.value);
+            const label = opt.label != null ? String(opt.label) : value;
+            const checked = want.has(value) ? "checked" : "";
+            return `<label class="msel-opt">
+              <input type="checkbox" value="${escapeHtml(value)}" data-label="${escapeHtml(label)}" ${checked} />
+              <span>${escapeHtml(label)}</span>
+            </label>`;
+          }).join("")}
+        </div>`;
+      updateMselLabel(root);
+    }
+
+    function formatMultiLabel(values, allLabel, mapFn) {
+      if (!values.length) return allLabel;
+      const labels = values.map((v) => (mapFn ? mapFn(v) : v));
+      if (labels.length <= 3) return labels.join(", ");
+      return `${labels.slice(0, 2).join(", ")} +${labels.length - 2}`;
+    }
+
+    function filterSelections(ds) {
+      return {
+        years: selectedValues(`year-${ds.id}`),
+        months: selectedValues(`month-${ds.id}`),
+        divisions: selectedValues(`div-${ds.id}`),
+      };
+    }
+
+    function filteredRows(ds) {
+      const { years, months, divisions } = filterSelections(ds);
+      const yearSet = years.length ? new Set(years) : null;
+      const monthSet = months.length ? new Set(months.map(Number)) : null;
+      const divSet = divisions.length ? new Set(divisions) : null;
+
+      let rows = ds.rows.filter((r) => {
+        if (ds.excludeNegatives && r.amount < 0) return false;
+        if (yearSet && !yearSet.has(String(r.year))) return false;
+        if (monthSet && !monthSet.has(r.month)) return false;
+        if (divSet && !divSet.has(r.division)) return false;
+        return true;
+      });
+      if (ds.id === "logistics") {
+        const reasons = selectedReasonCodes();
+        if (reasons.length) {
+          const reasonSet = new Set(reasons);
+          rows = rows.filter((r) => reasonSet.has(r.reason));
+        }
+      }
+      return rows;
+    }
+
+    function syncExcludeNegUi(ds) {
+      const btn = $(`exclude-neg-${ds.id}`);
+      if (!btn) return;
+      btn.classList.toggle("active", !!ds.excludeNegatives);
+      btn.textContent = ds.excludeNegatives
+        ? "Excluding negative amounts"
+        : "Exclude negative amounts";
+    }
+
+    /** Normalize amount band: under → [0, hi]; between → [lo, hi]. */
+    function getAmountRule(ds) {
+      if (ds.amountMode === "between") {
+        let lo = Number($(`thr-min-${ds.id}`).value);
+        let hi = Number($(`thr-max-${ds.id}`).value);
+        if (!Number.isFinite(lo) || lo < 0) lo = 0;
+        if (!Number.isFinite(hi) || hi < 0) hi = 0;
+        if (lo > hi) {
+          const t = lo;
+          lo = hi;
+          hi = t;
+        }
+        return { mode: "between", min: lo, max: hi };
+      }
+      let hi = Number($(`thr-${ds.id}`).value);
+      if (!Number.isFinite(hi) || hi < 0) hi = 0;
+      return { mode: "under", min: 0, max: hi };
+    }
+
+    function inAmountBand(row, rule) {
+      const a = row.absAmount;
+      return a >= rule.min && a <= rule.max;
+    }
+
+    function formatAmountRule(rule) {
+      if (rule.mode === "between") {
+        return `${moneyShort(rule.min)} – ${moneyShort(rule.max)}`;
+      }
+      return `≤ ${moneyShort(rule.max)}`;
+    }
+
+    function syncAmountModeUi(ds) {
+      const under = $(`under-fields-${ds.id}`);
+      const between = $(`between-fields-${ds.id}`);
+      const hint = $(`amount-hint-${ds.id}`);
+      const chips = $(`mode-${ds.id}`).querySelectorAll(".mode-chip");
+      chips.forEach((c) => {
+        c.classList.toggle("active", c.getAttribute("data-mode") === ds.amountMode);
+      });
+      if (ds.amountMode === "between") {
+        under.classList.add("hidden-mode");
+        between.classList.remove("hidden-mode");
+        hint.textContent = "Counts when From ≤ |Amount| ≤ To";
+        // Keep max in sync with single threshold when switching
+        const thr = Number($(`thr-${ds.id}`).value);
+        if (Number.isFinite(thr)) $(`thr-max-${ds.id}`).value = thr;
+      } else {
+        between.classList.add("hidden-mode");
+        under.classList.remove("hidden-mode");
+        hint.textContent = ds.id === "logistics"
+          ? "Counts when |Amount| ≤ threshold"
+          : "Counts when |Amount| ≤ threshold";
+        const hi = Number($(`thr-max-${ds.id}`).value);
+        if (Number.isFinite(hi)) {
+          $(`thr-${ds.id}`).value = hi;
+          $(`thr-slider-${ds.id}`).value = hi;
+        }
+      }
+    }
+
+    function groupStats(rows, rule, groupFn) {
+      const map = new Map();
+      let totalLines = 0, totalDollars = 0, underLines = 0, underDollars = 0;
+
+      for (const row of rows) {
+        const key = groupFn(row);
+        if (!map.has(key)) {
+          map.set(key, {
+            key,
+            totalLines: 0,
+            totalDollars: 0,
+            underLines: 0,
+            underDollars: 0,
+          });
+        }
+        const g = map.get(key);
+        g.totalLines += 1;
+        g.totalDollars += row.absAmount;
+        totalLines += 1;
+        totalDollars += row.absAmount;
+        if (inAmountBand(row, rule)) {
+          g.underLines += 1;
+          g.underDollars += row.absAmount;
+          underLines += 1;
+          underDollars += row.absAmount;
+        }
+      }
+
+      return {
+        groups: Array.from(map.values()),
+        totalLines,
+        totalDollars,
+        underLines,
+        underDollars,
+        rule,
+        threshold: rule.max,
+      };
+    }
+
+    function sortGroups(groups, preferredOrder) {
+      return [...groups].sort((a, b) => {
+        const ia = preferredOrder.indexOf(a.key);
+        const ib = preferredOrder.indexOf(b.key);
+        if (ia >= 0 || ib >= 0) {
+          return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
+        }
+        return b.totalDollars - a.totalDollars;
+      });
+    }
+
+    /** Sweep coverage: under = [0, thr]; between = [min, thr] as thr increases. */
+    function computeCoverageCurve(rows, maxThr, groupFn, preferredOrder, rule, steps = 80) {
+      const n = rows.length;
+      if (!n) return { points: [], byGroup: [] };
+
+      const bandMin = rule.mode === "between" ? rule.min : 0;
+      const items = rows.map((r) => ({
+        v: r.absAmount,
+        dollars: r.absAmount,
+        group: groupFn(r),
+      }));
+      items.sort((a, b) => a.v - b.v);
+
+      const totalDollars = items.reduce((s, i) => s + i.dollars, 0);
+      const groupTotals = new Map();
+      for (const it of items) {
+        if (!groupTotals.has(it.group)) groupTotals.set(it.group, { lines: 0, dollars: 0 });
+        const t = groupTotals.get(it.group);
+        t.lines += 1;
+        t.dollars += it.dollars;
+      }
+
+      const groups = sortGroups(
+        [...groupTotals.entries()].map(([key, t]) => ({ key, totalDollars: t.dollars })),
+        preferredOrder
+      ).map((g) => g.key);
+
+      const ceiling = Math.max(Number(maxThr) || 0, rule.max, bandMin, 1);
+      const step = Math.max(1, Math.ceil(ceiling / steps));
+      const thrSet = new Set();
+      for (let t = 0; t <= ceiling; t += step) thrSet.add(t);
+      thrSet.add(ceiling);
+      thrSet.add(bandMin);
+      thrSet.add(rule.max);
+      [50, 100, 250, 400, 1500].forEach((p) => { if (p <= ceiling) thrSet.add(p); });
+      const thresholds = [...thrSet].sort((a, b) => a - b);
+
+      // Prefill counts of items with v < bandMin (excluded from between band)
+      let i = 0;
+      while (i < items.length && items[i].v < bandMin) i += 1;
+
+      let underLines = 0;
+      let underDollars = 0;
+      const underByGroup = new Map(groups.map((g) => [g, { lines: 0, dollars: 0 }]));
+      const points = [];
+      const byGroupPct = Object.fromEntries(groups.map((g) => [g, []]));
+      let cursor = i;
+
+      for (const thr of thresholds) {
+        if (thr < bandMin) {
+          points.push({ x: thr, linePct: 0, dollarPct: 0 });
+          for (const g of groups) byGroupPct[g].push(0);
+          continue;
+        }
+        while (cursor < items.length && items[cursor].v <= thr) {
+          underLines += 1;
+          underDollars += items[cursor].dollars;
+          const g = underByGroup.get(items[cursor].group);
+          if (g) {
+            g.lines += 1;
+            g.dollars += items[cursor].dollars;
+          }
+          cursor += 1;
+        }
+        points.push({
+          x: thr,
+          linePct: (underLines / n) * 100,
+          dollarPct: totalDollars ? (underDollars / totalDollars) * 100 : 0,
+        });
+        for (const g of groups) {
+          const tot = groupTotals.get(g);
+          const und = underByGroup.get(g);
+          byGroupPct[g].push(tot.lines ? (und.lines / tot.lines) * 100 : 0);
+        }
+      }
+
+      return {
+        points,
+        byGroup: groups.map((key) => ({
+          key,
+          points: thresholds.map((t, j) => ({ x: t, y: byGroupPct[key][j] })),
+        })),
+      };
+    }
+
+    const LOCK_MARK_COLORS = ["#2649B2", "#B55CE6", "#C98A2C", "#1E6B6B", "#8B4513", "#C0392B"];
+
+    function yAtX(points, x) {
+      if (!points || !points.length) return null;
+      const data = points.map((p) => ({
+        x: typeof p === "object" ? p.x : null,
+        y: typeof p === "object" ? p.y : p,
+      })).filter((p) => p.x != null && Number.isFinite(p.y));
+      if (!data.length) return null;
+      if (x <= data[0].x) return data[0].y;
+      if (x >= data[data.length - 1].x) return data[data.length - 1].y;
+      for (let i = 1; i < data.length; i++) {
+        const a = data[i - 1];
+        const b = data[i];
+        if (x >= a.x && x <= b.x) {
+          if (b.x === a.x) return b.y;
+          const t = (x - a.x) / (b.x - a.x);
+          return a.y + t * (b.y - a.y);
+        }
+      }
+      return null;
+    }
+
+    const thresholdMarkerPlugin = {
+      id: "thresholdMarker",
+      afterDatasetsDraw(chart) {
+        const liveMarks = chart.$liveMarks || [];
+        const lockMarks = chart.$lockMarks || [];
+        const xScale = chart.scales.x;
+        const yScale = chart.scales.y;
+        const { top, bottom, left, right } = chart.chartArea;
+        const ctx = chart.ctx;
+
+        function drawVertical(value, label, color, labelOffset) {
+          if (!Number.isFinite(value)) return;
+          const x = xScale.getPixelForValue(value);
+          if (x < left || x > right) return;
+          ctx.save();
+          ctx.beginPath();
+          ctx.setLineDash([5, 4]);
+          ctx.strokeStyle = color || "#1a1a2e";
+          ctx.lineWidth = 1.5;
+          ctx.moveTo(x, top);
+          ctx.lineTo(x, bottom);
+          ctx.stroke();
+          if (label) {
+            ctx.setLineDash([]);
+            ctx.fillStyle = color || "#1a1a2e";
+            ctx.font = "600 11px Arial, sans-serif";
+            ctx.textAlign = "center";
+            ctx.fillText(label, x, Math.max(12, top - 4 - (labelOffset || 0)));
+          }
+          ctx.restore();
+          return x;
+        }
+
+        function drawDotsAtX(xValue, strokeColor) {
+          if (!Number.isFinite(xValue)) return;
+          const x = xScale.getPixelForValue(xValue);
+          if (x < left || x > right) return;
+          chart.data.datasets.forEach((ds, di) => {
+            if (ds._lockDots) return;
+            const meta = chart.getDatasetMeta(di);
+            if (meta.hidden) return;
+            const yVal = yAtX(ds.data, xValue);
+            if (yVal == null || !Number.isFinite(yVal)) return;
+            const y = yScale.getPixelForValue(yVal);
+            const color = typeof ds.borderColor === "string" ? ds.borderColor : (strokeColor || "#1a1a2e");
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(x, y, 5.5, 0, Math.PI * 2);
+            ctx.fillStyle = "#fff";
+            ctx.fill();
+            ctx.lineWidth = 2.5;
+            ctx.strokeStyle = color;
+            ctx.stroke();
+            ctx.restore();
+          });
+        }
+
+        // Live threshold: dashed line only (dots are reserved for locks)
+        liveMarks.forEach((m, idx) => {
+          drawVertical(m.value, m.label, m.color || "#1a1a2e", idx * 12);
+        });
+
+        // Locked thresholds: dashed line + dots on both charts
+        lockMarks.forEach((m, idx) => {
+          const color = m.color || LOCK_MARK_COLORS[idx % LOCK_MARK_COLORS.length];
+          drawVertical(
+            m.value,
+            m.label || ("Lock " + moneyShort(m.value)),
+            color,
+            (liveMarks.length + idx) * 12
+          );
+          drawDotsAtX(m.value, color);
+        });
+      },
+    };
+
+    function coverageLockMarks(ds) {
+      return (ds.locks || []).map((lock, i) => ({
+        value: Number(lock.threshold),
+        label: `Lock #${lock.id} ${moneyShort(lock.threshold)}`,
+        color: LOCK_MARK_COLORS[i % LOCK_MARK_COLORS.length],
+      }));
+    }
+
+    function applyCoverageLockMarks(ds) {
+      const marks = coverageLockMarks(ds);
+      ["overall", "group"].forEach((k) => {
+        const chart = ds.coverageCharts[k];
+        if (!chart) return;
+        chart.$lockMarks = marks;
+        // Force a full redraw so removed lock dots disappear immediately
+        chart.update();
+      });
+    }
+
+    function destroyCoverageCharts(ds) {
+      ["overall", "group"].forEach((k) => {
+        if (ds.coverageCharts[k]) {
+          ds.coverageCharts[k].destroy();
+          ds.coverageCharts[k] = null;
+        }
+      });
+    }
+
+    function renderCoverageCharts(ds, rows, rule) {
+      const maxThr = Math.max(
+        Number($(`thr-slider-${ds.id}`).max) || 5000,
+        rule.max,
+        rule.min
+      );
+      const groupFn = ds.id === "coop"
+        ? (r) => r.division
+        : (r) => typeLabel(r.reason);
+      const order = ds.id === "coop"
+        ? DIVISION_ORDER
+        : sortReasonCodes([...new Set(rows.map((r) => r.reason))]).map((c) => typeLabel(c));
+      const accent = THEME[ds.id].thr;
+      const sels = filterSelections(ds);
+      const typeFocus = ds.id === "logistics" ? selectedReasonCodes().join(",") : "";
+      const cacheKey = [
+        sels.years.join(","),
+        sels.months.join(","),
+        sels.divisions.join(","),
+        typeFocus,
+        ds.excludeNegatives ? "1" : "0",
+        rule.mode,
+        rule.min,
+        maxThr,
+        rows.length,
+      ].join("|");
+
+      if (!ds.coverageCache || ds.coverageCache.key !== cacheKey) {
+        ds.coverageCache = {
+          key: cacheKey,
+          curve: computeCoverageCurve(rows, maxThr, groupFn, order, rule),
+        };
+        destroyCoverageCharts(ds);
+      }
+
+      const curve = ds.coverageCache.curve;
+      const lineLabel = rule.mode === "between" ? "% lines in [From, thr]" : "% lines ≤ thr";
+      const dollarLabel = rule.mode === "between" ? "% $$ in [From, thr]" : "% $$ ≤ thr";
+      const commonOpts = {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: false,
+        interaction: { mode: "index", intersect: false },
+        plugins: {
+          legend: { position: "bottom", labels: { boxWidth: 12, font: { size: 11 } } },
+        },
+        scales: {
+          x: {
+            type: "linear",
+            min: 0,
+            max: maxThr,
+            title: { display: true, text: "Upper amount ($)", font: { size: 11 } },
+            ticks: {
+              maxTicksLimit: 8,
+              callback: (v) => "$" + Number(v).toLocaleString(),
+              font: { size: 10 },
+            },
+          },
+          y: {
+            beginAtZero: true,
+            max: 100,
+            title: { display: true, text: "Coverage (%)", font: { size: 11 } },
+            ticks: { callback: (v) => v + "%", font: { size: 10 } },
+          },
+        },
+      };
+
+      if (!ds.coverageCharts.overall) {
+        const canvas = $(`cov-overall-${ds.id}`);
+        ds.coverageCharts.overall = new Chart(canvas, {
+          type: "line",
+          data: {
+            datasets: [
+              {
+                label: lineLabel,
+                data: curve.points.map((p) => ({ x: p.x, y: p.linePct })),
+                borderColor: THEME[ds.id].total,
+                backgroundColor: "transparent",
+                tension: 0.15,
+                pointRadius: 0,
+                pointHoverRadius: 4,
+                borderWidth: 2.5,
+              },
+              {
+                label: dollarLabel,
+                data: curve.points.map((p) => ({ x: p.x, y: p.dollarPct })),
+                borderColor: accent,
+                backgroundColor: "transparent",
+                tension: 0.15,
+                pointRadius: 0,
+                pointHoverRadius: 4,
+                borderWidth: 2.5,
+              },
+            ],
+          },
+          options: {
+            ...commonOpts,
+            plugins: {
+              ...commonOpts.plugins,
+              tooltip: {
+                callbacks: {
+                  title: (items) => `Upper ${moneyShort(items[0]?.parsed?.x ?? 0)}`,
+                  label: (ctx) => `${ctx.dataset.label}: ${ctx.parsed.y.toFixed(1)}%`,
+                },
+              },
+            },
+          },
+          plugins: [thresholdMarkerPlugin],
+        });
+      } else {
+        ds.coverageCharts.overall.data.datasets[0].label = lineLabel;
+        ds.coverageCharts.overall.data.datasets[1].label = dollarLabel;
+      }
+
+      if (!ds.coverageCharts.group) {
+        const canvas = $(`cov-group-${ds.id}`);
+        ds.coverageCharts.group = new Chart(canvas, {
+          type: "line",
+          data: {
+            datasets: curve.byGroup.map((g, i) => ({
+              label: g.key,
+              data: g.points,
+              borderColor: GROUP_COLORS[i % GROUP_COLORS.length],
+              backgroundColor: "transparent",
+              tension: 0.15,
+              pointRadius: 0,
+              pointHoverRadius: 4,
+              borderWidth: 2.5,
+            })),
+          },
+          options: {
+            ...commonOpts,
+            scales: {
+              ...commonOpts.scales,
+              y: {
+                ...commonOpts.scales.y,
+                title: { display: true, text: "% of lines in band", font: { size: 11 } },
+              },
+            },
+            plugins: {
+              ...commonOpts.plugins,
+              tooltip: {
+                callbacks: {
+                  title: (items) => `Upper ${moneyShort(items[0]?.parsed?.x ?? 0)}`,
+                  label: (ctx) => `${ctx.dataset.label}: ${ctx.parsed.y.toFixed(1)}% of lines`,
+                },
+              },
+            },
+          },
+          plugins: [thresholdMarkerPlugin],
+        });
+      }
+
+      const marks = rule.mode === "between"
+        ? [
+            { value: rule.min, label: "From " + moneyShort(rule.min), color: "#888" },
+            { value: rule.max, label: "To " + moneyShort(rule.max), color: "#1a1a2e" },
+          ]
+        : [{ value: rule.max, label: moneyShort(rule.max), color: "#1a1a2e" }];
+
+      ds.coverageCharts.overall.$liveMarks = marks;
+      ds.coverageCharts.group.$liveMarks = marks;
+      ds.coverageCharts.overall.$lockMarks = coverageLockMarks(ds);
+      ds.coverageCharts.group.$lockMarks = coverageLockMarks(ds);
+      ds.coverageCharts.overall.update("none");
+      ds.coverageCharts.group.update("none");
+    }
+
+    function pairedChartsHtml(stats, accent, categoryOrder, moneyTitle, lineTitle, slug) {
+      const groups = sortGroups(stats.groups, categoryOrder);
+      const withTotal = [
+        ...groups,
+        {
+          key: "Grand Total",
+          totalLines: stats.totalLines,
+          totalDollars: stats.totalDollars,
+          underLines: stats.underLines,
+          underDollars: stats.underDollars,
+          isTotal: true,
+        },
+      ];
+
+      const maxDollars = Math.max(...withTotal.map((g) => g.totalDollars), 1);
+      const maxLines = Math.max(...withTotal.map((g) => g.totalLines), 1);
+
+      function moneyBars() {
+        return withTotal.map((g) => {
+          const label = g.isTotal ? `<b>${escapeHtml(g.key)}</b>` : escapeHtml(g.key);
+          const totalW = sqrtScale(g.totalDollars, maxDollars);
+          const thrW = sqrtScale(g.underDollars, maxDollars);
+          const thrLabel = g.isTotal
+            ? `<b>${moneyM(g.underDollars)} (${pct(g.underDollars, g.totalDollars)})</b>`
+            : `${moneyM(g.underDollars)} (${pct(g.underDollars, g.totalDollars)})`;
+          const totLabel = g.isTotal ? `<b>${moneyM(g.totalDollars)}</b>` : moneyM(g.totalDollars);
+          return `
+            <div class="bar-group">
+              <div class="bar-cat-label">${label}</div>
+              <div class="bars">
+                <div class="bar-row">
+                  <div class="bar-track"><div class="bar-fill" style="width:${totalW}%;background:${THEME.coop.total}"></div></div>
+                  <span class="bar-value">${totLabel}</span>
+                </div>
+                <div class="bar-row">
+                  <div class="bar-track"><div class="bar-fill" style="width:${thrW}%;background:${accent}"></div></div>
+                  <span class="bar-value">${thrLabel}</span>
+                </div>
+              </div>
+            </div>`;
+        }).join("");
+      }
+
+      function lineBars() {
+        return withTotal.map((g) => {
+          const label = g.isTotal ? `<b>${escapeHtml(g.key)}</b>` : escapeHtml(g.key);
+          const totalW = sqrtScale(g.totalLines, maxLines);
+          const thrW = sqrtScale(g.underLines, maxLines);
+          const thrLabel = g.isTotal
+            ? `<b>${g.underLines.toLocaleString()} (${pctInt(g.underLines, g.totalLines)})</b>`
+            : `${g.underLines.toLocaleString()} (${pctInt(g.underLines, g.totalLines)})`;
+          const totLabel = g.isTotal ? `<b>${g.totalLines.toLocaleString()}</b>` : g.totalLines.toLocaleString();
+          return `
+            <div class="bar-group">
+              <div class="bar-cat-label">${label}</div>
+              <div class="bars">
+                <div class="bar-row">
+                  <div class="bar-track"><div class="bar-fill" style="width:${totalW}%;background:${THEME.coop.total}"></div></div>
+                  <span class="bar-value">${totLabel}</span>
+                </div>
+                <div class="bar-row">
+                  <div class="bar-track"><div class="bar-fill" style="width:${thrW}%;background:${accent}"></div></div>
+                  <span class="bar-value">${thrLabel}</span>
+                </div>
+              </div>
+            </div>`;
+        }).join("");
+      }
+
+      return `
+        <div class="chart-box" data-dl-el data-dl-name="${escapeHtml(slug)}-dollars">
+          <div class="chart-head">
+            <div>
+              <div class="chart-title">${moneyTitle}</div>
+              <div class="chart-subtitle">Bar width scaled to sqrt(value); labels show $ % (Threshold ÷ Total)</div>
+            </div>
+            <button type="button" class="dl-btn" data-dl-el-btn data-dl-name="${escapeHtml(slug)}-dollars">Download</button>
+          </div>
+          <div class="legend">
+            <div class="legend-item"><span class="swatch" style="background:${THEME.coop.total}"></span> Total $ (M)</div>
+            <div class="legend-item"><span class="swatch" style="background:${accent}"></span> Threshold $ (M)</div>
+          </div>
+          ${moneyBars()}
+        </div>
+        <div class="chart-box" data-dl-el data-dl-name="${escapeHtml(slug)}-lines">
+          <div class="chart-head">
+            <div>
+              <div class="chart-title">${lineTitle}</div>
+              <div class="chart-subtitle">Bar width scaled to sqrt(count); labels show Line % (Threshold ÷ Claim)</div>
+            </div>
+            <button type="button" class="dl-btn" data-dl-el-btn data-dl-name="${escapeHtml(slug)}-lines">Download</button>
+          </div>
+          <div class="legend">
+            <div class="legend-item"><span class="swatch" style="background:${THEME.coop.total}"></span> No. Claim (Total)</div>
+            <div class="legend-item"><span class="swatch" style="background:${accent}"></span> No. Threshold</div>
+          </div>
+          ${lineBars()}
+        </div>`;
+    }
+
+    function renderPairedCharts(containerId, stats, accent, categoryOrder, moneyTitle, lineTitle) {
+      const slug = containerId.replace(/^charts-/, "");
+      $(containerId).innerHTML = pairedChartsHtml(
+        stats, accent, categoryOrder, moneyTitle, lineTitle, slug
+      );
+    }
+
+    function renderLogisticsByDivisionCharts(rows, rule) {
+      const container = $("charts-logistics-by-div");
+      const reasons = sortReasonCodes([...new Set(rows.map((r) => r.reason))]);
+      if (!reasons.length) {
+        container.innerHTML = `<div class="empty">No reason codes in the current filter.</div>`;
+        return;
+      }
+
+      const accent = THEME.logistics.thr;
+      container.innerHTML = reasons.map((reason) => {
+        const subset = rows.filter((r) => r.reason === reason);
+        const stats = groupStats(subset, rule, (r) => r.division);
+        const label = typeLabel(reason);
+        const slug = `logistics-${reason}`;
+        return `
+          <div class="panel" style="box-shadow:none;border:1px solid #eee;margin-bottom:14px;padding:16px">
+            <div class="section-title" style="margin-bottom:10px">${escapeHtml(label)} · by Division</div>
+            <div class="charts">
+              ${pairedChartsHtml(
+                stats,
+                accent,
+                DIVISION_ORDER,
+                `Threshold $ vs Total $ — ${escapeHtml(label)}`,
+                `Threshold Lines vs Claim Lines — ${escapeHtml(label)}`,
+                slug
+              )}
+            </div>
+            <div class="footnote">${subset.length.toLocaleString()} lines · ${moneyShort(stats.totalDollars)} total</div>
+          </div>`;
+      }).join("");
+    }
+
+    function renderKpis(ds, stats) {
+      const sels = filterSelections(ds);
+      const year = formatMultiLabel(sels.years, "All years");
+      const month = formatMultiLabel(sels.months, "All months", (m) => MONTH_NAMES[Number(m) - 1] || m);
+      const div = formatMultiLabel(sels.divisions, "All divisions");
+      const rule = stats.rule;
+      const bandLabel = formatAmountRule(rule);
+      $(`kpis-${ds.id}`).innerHTML = `
+        <div class="kpi">
+          <div class="name">Amount band</div>
+          <div class="value" style="font-size:18px">${escapeHtml(bandLabel)}</div>
+          <div class="sub">${rule.mode === "between" ? "From ≤ |Amount| ≤ To" : "|Amount| ≤ thr"}</div>
+        </div>
+        <div class="kpi">
+          <div class="name">Lines in band</div>
+          <div class="value">${stats.underLines.toLocaleString()}</div>
+          <div class="sub">${pctInt(stats.underLines, stats.totalLines)} of ${stats.totalLines.toLocaleString()}</div>
+        </div>
+        <div class="kpi">
+          <div class="name">$$ in band</div>
+          <div class="value">${moneyShort(stats.underDollars)}</div>
+          <div class="sub">${pct(stats.underDollars, stats.totalDollars)} of ${moneyShort(stats.totalDollars)}</div>
+        </div>
+        <div class="kpi">
+          <div class="name">Filter</div>
+          <div class="value" style="font-size:15px">${escapeHtml(String(year))}</div>
+          <div class="sub">${escapeHtml(month)} · ${escapeHtml(div)}${ds.excludeNegatives ? " · no negatives" : ""}</div>
+        </div>
+      `;
+    }
+
+    function renderCoopTable(rows, rule) {
+      // Division → reason breakdown
+      const byDiv = new Map();
+      for (const row of rows) {
+        const d = row.division;
+        if (!byDiv.has(d)) byDiv.set(d, { label: row.divisionLabel, reasons: new Map(), totals: blankBucket() });
+        const div = byDiv.get(d);
+        addRow(div.totals, row, rule);
+        if (!div.reasons.has(row.reason)) div.reasons.set(row.reason, blankBucket());
+        addRow(div.reasons.get(row.reason), row, rule);
+      }
+
+      const order = DIVISION_ORDER.filter((d) => byDiv.has(d))
+        .concat([...byDiv.keys()].filter((d) => !DIVISION_ORDER.includes(d)));
+
+      let grand = blankBucket();
+      let html = `<thead><tr>
+        <th></th><th>No. Thr.</th><th>No. Claim</th><th>Line %</th>
+        <th>Thr $M</th><th>Total $M</th><th class="pct-col">$ %</th>
+      </tr></thead><tbody>`;
+
+      for (const d of order) {
+        const block = byDiv.get(d);
+        grand = sumBuckets(grand, block.totals);
+        html += rowHtml(block.label, block.totals, true);
+        const reasons = [...block.reasons.keys()].sort();
+        for (const rc of reasons) {
+          html += rowHtml(rc, block.reasons.get(rc), false);
+        }
+      }
+      html += rowHtml("Grand Total", grand, false, true);
+      html += `</tbody>`;
+      $("table-coop").innerHTML = html;
+    }
+
+    function renderLogisticsTable(rows, rule) {
+      const byDiv = new Map();
+      for (const row of rows) {
+        const d = row.division;
+        if (!byDiv.has(d)) byDiv.set(d, { label: row.divisionLabel, reasons: new Map(), totals: blankBucket() });
+        const div = byDiv.get(d);
+        addRow(div.totals, row, rule);
+        const reasonKey = typeLabel(row.reason);
+        if (!div.reasons.has(reasonKey)) div.reasons.set(reasonKey, blankBucket());
+        addRow(div.reasons.get(reasonKey), row, rule);
+      }
+
+      const order = DIVISION_ORDER.filter((d) => byDiv.has(d))
+        .concat([...byDiv.keys()].filter((d) => !DIVISION_ORDER.includes(d)));
+
+      let grand = blankBucket();
+      let html = `<thead><tr>
+        <th></th><th>No. Thr.</th><th>No. Claim</th><th>Line %</th>
+        <th>Thr $M</th><th>Total $M</th><th class="pct-col">$ %</th>
+      </tr></thead><tbody>`;
+
+      for (const d of order) {
+        const block = byDiv.get(d);
+        grand = sumBuckets(grand, block.totals);
+        html += rowHtml(block.label, block.totals, true);
+        const reasons = [...block.reasons.keys()].sort((a, b) => {
+          const ra = REASON_ORDER.find((c) => typeLabel(c) === a) || a;
+          const rb = REASON_ORDER.find((c) => typeLabel(c) === b) || b;
+          return sortReasonCodes([ra, rb])[0] === ra ? -1 : 1;
+        });
+        for (const rc of reasons) {
+          html += rowHtml(rc, block.reasons.get(rc), false);
+        }
+      }
+      html += rowHtml("Grand Total", grand, false, true);
+      html += `</tbody>`;
+      $("table-logistics").innerHTML = html;
+    }
+
+    const TOP_CLIENTS_N = 25;
+
+    function clientKey(row) {
+      return row.customerId
+        ? `id:${row.customerId}`
+        : `name:${row.customer || "(unknown)"}`;
+    }
+
+    function matrixCellHtml(b, extraClass = "") {
+      const cls = extraClass ? ` class="${extraClass}"` : "";
+      if (!b || !b.totalDollars) {
+        return `<td class="${["muted-zero", extraClass].filter(Boolean).join(" ")}">—</td>`;
+      }
+      return `<td${cls}>
+        <span class="cell-main">${(b.totalDollars / 1e6).toFixed(2)}</span>
+        <span class="cell-sub">${pct(b.underDollars, b.totalDollars)} in band · ${(b.underDollars / 1e6).toFixed(2)} thr</span>
+      </td>`;
+    }
+
+    function renderTopClientsTable(ds, rows, rule) {
+      const table = $(`table-clients-${ds.id}`);
+      const note = $(`note-clients-${ds.id}`);
+      if (!table) return;
+
+      const hasCustomer = rows.some((r) => r.customer || r.customerId);
+      if (!hasCustomer) {
+        table.innerHTML = "";
+        if (note) {
+          note.textContent = "Customer columns not in the saved data. Drop the Excel file again to enable the top-clients table.";
+        }
+        return;
+      }
+
+      const divsPresent = new Set(rows.map((r) => r.division));
+      const divOrder = DIVISION_ORDER.filter((d) => divsPresent.has(d))
+        .concat([...divsPresent].filter((d) => !DIVISION_ORDER.includes(d)).sort());
+
+      const byClient = new Map();
+      for (const row of rows) {
+        const key = clientKey(row);
+        if (!byClient.has(key)) {
+          byClient.set(key, {
+            name: row.customer || "(unknown)",
+            id: row.customerId || "",
+            byDiv: new Map(),
+            totals: blankBucket(),
+          });
+        }
+        const client = byClient.get(key);
+        if ((!client.name || client.name === "(unknown)") && row.customer) client.name = row.customer;
+        if (!client.id && row.customerId) client.id = row.customerId;
+        addRow(client.totals, row, rule);
+        if (!client.byDiv.has(row.division)) client.byDiv.set(row.division, blankBucket());
+        addRow(client.byDiv.get(row.division), row, rule);
+      }
+
+      const ranked = [...byClient.values()].sort((a, b) => b.totals.totalDollars - a.totals.totalDollars);
+      const top = ranked.slice(0, TOP_CLIENTS_N);
+      const rest = ranked.slice(TOP_CLIENTS_N);
+
+      const divLabels = Object.fromEntries(
+        rows.map((r) => [r.division, r.divisionLabel || r.division])
+      );
+
+      let html = `<thead><tr>
+        <th>Customer</th>
+        ${divOrder.map((d) => `<th>${escapeHtml(divLabels[d] || d)}</th>`).join("")}
+        <th class="pct-col">Total</th>
+      </tr></thead><tbody>`;
+
+      const renderClientRow = (client, cls = "") => {
+        const nameHtml = `${escapeHtml(client.name)}${
+          client.id ? `<span class="client-id">${escapeHtml(client.id)}</span>` : ""
+        }`;
+        return `<tr class="${cls}">
+          <td class="client-name">${nameHtml}</td>
+          ${divOrder.map((d) => matrixCellHtml(client.byDiv.get(d))).join("")}
+          ${matrixCellHtml(client.totals, "pct-col")}
+        </tr>`;
+      };
+
+      for (const client of top) html += renderClientRow(client);
+
+      if (rest.length) {
+        const other = { name: `Other (${rest.length.toLocaleString()} customers)`, id: "", byDiv: new Map(), totals: blankBucket() };
+        for (const c of rest) {
+          other.totals = sumBuckets(other.totals, c.totals);
+          for (const [d, b] of c.byDiv) {
+            if (!other.byDiv.has(d)) other.byDiv.set(d, blankBucket());
+            other.byDiv.set(d, sumBuckets(other.byDiv.get(d), b));
+          }
+        }
+        html += renderClientRow(other, "category-row");
+      }
+
+      const grand = { name: "Grand Total", id: "", byDiv: new Map(), totals: blankBucket() };
+      for (const c of ranked) {
+        grand.totals = sumBuckets(grand.totals, c.totals);
+        for (const [d, b] of c.byDiv) {
+          if (!grand.byDiv.has(d)) grand.byDiv.set(d, blankBucket());
+          grand.byDiv.set(d, sumBuckets(grand.byDiv.get(d), b));
+        }
+      }
+      html += renderClientRow(grand, "grand-total");
+      html += `</tbody>`;
+      table.innerHTML = html;
+
+      if (note) {
+        note.textContent = `Top ${Math.min(TOP_CLIENTS_N, ranked.length)} customers by total claim $ (current filters). Each cell: Total $M · in-band % · threshold $M.`;
+      }
+    }
+
+    function blankBucket() {
+      return { underLines: 0, totalLines: 0, underDollars: 0, totalDollars: 0 };
+    }
+    function addRow(b, row, rule) {
+      b.totalLines += 1;
+      b.totalDollars += row.absAmount;
+      if (inAmountBand(row, rule)) {
+        b.underLines += 1;
+        b.underDollars += row.absAmount;
+      }
+    }
+    function sumBuckets(a, b) {
+      return {
+        underLines: a.underLines + b.underLines,
+        totalLines: a.totalLines + b.totalLines,
+        underDollars: a.underDollars + b.underDollars,
+        totalDollars: a.totalDollars + b.totalDollars,
+      };
+    }
+    function rowHtml(label, b, isCat, isGrand) {
+      const cls = isGrand ? "grand-total" : isCat ? "category-row" : "";
+      return `<tr class="${cls}">
+        <td>${escapeHtml(label)}</td>
+        <td>${b.underLines.toLocaleString()}</td>
+        <td>${b.totalLines.toLocaleString()}</td>
+        <td>${pctInt(b.underLines, b.totalLines)}</td>
+        <td>${(b.underDollars / 1e6).toFixed(2)}</td>
+        <td>${(b.totalDollars / 1e6).toFixed(2)}</td>
+        <td class="pct-col">${pct(b.underDollars, b.totalDollars)}</td>
+      </tr>`;
+    }
+
+    function clearAllLocks(ds) {
+      if (!ds.locks.length) return;
+      ds.locks = [];
+      renderLocks(ds);
+      applyCoverageLockMarks(ds);
+      schedulePersist(ds);
+    }
+
+    function removeLock(ds, lockId) {
+      ds.locks = ds.locks.filter((l) => l.id !== lockId);
+      renderLocks(ds);
+      applyCoverageLockMarks(ds);
+      schedulePersist(ds);
+    }
+
+    function syncClearButtons(ds) {
+      document.querySelectorAll(`[data-clear-locks="${ds.id}"]`).forEach((btn) => {
+        btn.disabled = !ds.locks.length;
+        btn.textContent = ds.locks.length
+          ? `Clear all locks (${ds.locks.length})`
+          : "Clear all locks";
+      });
+    }
+
+    function renderLocks(ds) {
+      const empty = $(`empty-${ds.id}`);
+      const grid = $(`locks-${ds.id}`);
+      syncClearButtons(ds);
+
+      if (!ds.locks.length) {
+        empty.classList.remove("hidden");
+        grid.innerHTML = "";
+        return;
+      }
+      empty.classList.add("hidden");
+      const accent = THEME[ds.id].thr;
+      grid.innerHTML = ds.locks.map((lock) => `
+        <div class="locked-card">
+          <div class="locked-card-head">
+            <h3>Locked #${lock.id}</h3>
+            <button type="button" class="btn-remove-lock" data-remove-lock="${lock.id}" data-ds="${ds.id}">Remove</button>
+          </div>
+          <div class="thr">${escapeHtml(lock.bandLabel || moneyShort(lock.threshold))}</div>
+          <div class="meta">
+            ${escapeHtml(lock.year)} · ${escapeHtml(lock.monthLabel)} · ${escapeHtml(lock.division)}${lock.reasonFocus ? ` · ${escapeHtml(lock.reasonFocus)}` : ""}${lock.excludeNegatives ? " · no negatives" : ""}<br/>
+            Lines ${lock.underLines.toLocaleString()} (${pctInt(lock.underLines, lock.totalLines)}) ·
+            $$ ${moneyShort(lock.underDollars)} (${pct(lock.underDollars, lock.totalDollars)})
+          </div>
+          <div class="charts" style="grid-template-columns:1fr; gap:12px; margin:0">
+            ${miniChartsHtml(lock, accent)}
+          </div>
+        </div>
+      `).join("");
+    }
+
+    function miniChartsHtml(lock, accent) {
+      const groups = lock.groups;
+      const maxD = Math.max(...groups.map((g) => g.totalDollars), 1);
+      const maxL = Math.max(...groups.map((g) => g.totalLines), 1);
+      const money = groups.map((g) => `
+        <div class="bar-group">
+          <div class="bar-cat-label">${escapeHtml(g.key)}</div>
+          <div class="bars">
+            <div class="bar-row"><div class="bar-track"><div class="bar-fill" style="width:${sqrtScale(g.totalDollars, maxD)}%;background:${THEME.coop.total}"></div></div><span class="bar-value">${moneyM(g.totalDollars)}</span></div>
+            <div class="bar-row"><div class="bar-track"><div class="bar-fill" style="width:${sqrtScale(g.underDollars, maxD)}%;background:${accent}"></div></div><span class="bar-value">${moneyM(g.underDollars)} (${pct(g.underDollars, g.totalDollars)})</span></div>
+          </div>
+        </div>`).join("");
+      const lines = groups.map((g) => `
+        <div class="bar-group">
+          <div class="bar-cat-label">${escapeHtml(g.key)}</div>
+          <div class="bars">
+            <div class="bar-row"><div class="bar-track"><div class="bar-fill" style="width:${sqrtScale(g.totalLines, maxL)}%;background:${THEME.coop.total}"></div></div><span class="bar-value">${g.totalLines.toLocaleString()}</span></div>
+            <div class="bar-row"><div class="bar-track"><div class="bar-fill" style="width:${sqrtScale(g.underLines, maxL)}%;background:${accent}"></div></div><span class="bar-value">${g.underLines.toLocaleString()} (${pctInt(g.underLines, g.totalLines)})</span></div>
+          </div>
+        </div>`).join("");
+      return `
+        <div class="chart-box" style="padding:10px" data-dl-el data-dl-name="lock-${lock.id}-dollars">
+          <div class="chart-head">
+            <div class="chart-title" style="font-size:13px">$ vs Total</div>
+            <button type="button" class="dl-btn" data-dl-el-btn data-dl-name="lock-${lock.id}-dollars">Download</button>
+          </div>
+          ${money}
+        </div>
+        <div class="chart-box" style="padding:10px" data-dl-el data-dl-name="lock-${lock.id}-lines">
+          <div class="chart-head">
+            <div class="chart-title" style="font-size:13px">Lines vs Claims</div>
+            <button type="button" class="dl-btn" data-dl-el-btn data-dl-name="lock-${lock.id}-lines">Download</button>
+          </div>
+          ${lines}
+        </div>`;
+    }
+
+    function currentThreshold(ds) {
+      return getAmountRule(ds).max;
+    }
+
+    function datasetHasDays(rows) {
+      return rows.some((r) => r.daysInArrears != null && Number.isFinite(r.daysInArrears));
+    }
+
+    function percentileValue(sortedVals, pct) {
+      if (!sortedVals.length) return 0;
+      const p = Math.max(0, Math.min(100, Number(pct) || 0)) / 100;
+      const idx = Math.min(sortedVals.length - 1, Math.floor(p * (sortedVals.length - 1)));
+      return sortedVals[idx];
+    }
+
+
+    function enforceAscendingAbsolute(ids, step) {
+      const els = ids.map((id) => $(id)).filter(Boolean);
+      if (!els.length) return [];
+      const vals = els.map((el) => Number(el.value) || 0);
+      for (let i = 1; i < vals.length; i++) {
+        if (vals[i] <= vals[i - 1]) vals[i] = vals[i - 1] + step;
+      }
+      const max = Number(els[els.length - 1].max);
+      if (Number.isFinite(max) && vals[vals.length - 1] > max) {
+        vals[vals.length - 1] = max;
+        for (let i = vals.length - 2; i >= 0; i--) {
+          if (vals[i] >= vals[i + 1]) vals[i] = Math.max(0, vals[i + 1] - step);
+        }
+      }
+      els.forEach((el, i) => { el.value = String(vals[i]); });
+      return vals;
+    }
+
+    function getAmountCuts() {
+      // [low, med, high, urgent]
+      return enforceAscendingAbsolute(["amt-low", "amt-med", "amt-high", "amt-urgent"], 10);
+    }
+
+    function getPriorityCuts() {
+      return enforceAscendingAbsolute(["pri-low", "pri-med", "pri-high", "pri-urgent"], 1);
+    }
+
+    function tierFromCuts(value, cuts) {
+      // cuts = [low, med, high, urgent]
+      // below Low starts → null (outside the four tiers)
+      if (value < cuts[0]) return null;
+      if (value < cuts[1]) return "Low";
+      if (value < cuts[2]) return "Medium";
+      if (value < cuts[3]) return "High";
+      return "Urgent";
+    }
+
+    function tierRank(tier) {
+      return PRIORITY_LEVELS.indexOf(tier);
+    }
+
+    function minLevelLabel(rank) {
+      return ["Low+", "Medium+", "High+", "Urgent"][rank] || "Low+";
+    }
+
+    function absoluteBands(cuts, kind) {
+      const [low, med, high, urgent] = cuts;
+      if (kind === "$") {
+        return [
+          { name: "Low", label: `${moneyExact(low)}–${moneyExact(med)}` },
+          { name: "Medium", label: `${moneyExact(med)}–${moneyExact(high)}` },
+          { name: "High", label: `${moneyExact(high)}–${moneyExact(urgent)}` },
+          { name: "Urgent", label: `≥ ${moneyExact(urgent)}` },
+        ];
+      }
+      return [
+        { name: "Low", label: `${Math.round(low)}–${Math.round(med)}d` },
+        { name: "Medium", label: `${Math.round(med)}–${Math.round(high)}d` },
+        { name: "High", label: `${Math.round(high)}–${Math.round(urgent)}d` },
+        { name: "Urgent", label: `≥ ${Math.round(urgent)}d` },
+      ];
+    }
+
+    function cellIncluded(mode, amountTier, daysTier, minRank) {
+      if (mode === "amount") {
+        if (!amountTier) return false;
+        return tierRank(amountTier) >= minRank;
+      }
+      if (mode === "days") {
+        if (!daysTier) return false;
+        return tierRank(daysTier) >= minRank;
+      }
+      if (!amountTier || !daysTier) return false;
+      return tierRank(amountTier) >= minRank && tierRank(daysTier) >= minRank;
+    }
+
+    function scaleIndepSliders(amtSorted, daySorted) {
+      const p99 = amtSorted.length ? percentileValue(amtSorted, 99) : 5000;
+      const amtMax = Math.max(2000, Math.ceil(p99 / 50) * 50);
+      ["amt-low", "amt-med", "amt-high", "amt-urgent"].forEach((id) => {
+        const el = $(id);
+        if (!el) return;
+        el.max = String(amtMax);
+        if (Number(el.value) > amtMax) el.value = String(amtMax);
+      });
+      const dayMax = Math.max(
+        180,
+        Math.ceil((daySorted.length ? daySorted[daySorted.length - 1] : 180) / 5) * 5
+      );
+      ["pri-low", "pri-med", "pri-high", "pri-urgent"].forEach((id) => {
+        const el = $(id);
+        if (!el) return;
+        el.max = String(dayMax);
+        if (Number(el.value) > dayMax) el.value = String(dayMax);
+      });
+    }
+
+    function syncIndepSliderLabels(amtCuts, priCuts) {
+      const amtMap = [
+        ["amt-low-val", amtCuts[0]],
+        ["amt-med-val", amtCuts[1]],
+        ["amt-high-val", amtCuts[2]],
+        ["amt-urgent-val", amtCuts[3]],
+      ];
+      for (const [id, v] of amtMap) if ($(id)) $(id).textContent = moneyExact(v);
+      const priMap = [
+        ["pri-low-val", priCuts[0]],
+        ["pri-med-val", priCuts[1]],
+        ["pri-high-val", priCuts[2]],
+        ["pri-urgent-val", priCuts[3]],
+      ];
+      for (const [id, v] of priMap) if ($(id)) $(id).textContent = `${Math.round(v)}d`;
+    }
+
+    function prioritySourceRows() {
+      const out = [];
+      if (datasets.coop.rows.length) {
+        for (const r of filteredRows(datasets.coop)) out.push({ ...r, source: "COOP" });
+      }
+      if (datasets.logistics.rows.length) {
+        for (const r of filteredRows(datasets.logistics)) out.push({ ...r, source: "Logistics" });
+      }
+      const reasons = selectedValues("prio-reasons");
+      if (!reasons.length) return out;
+      const set = new Set(reasons);
+      return out.filter((r) => set.has(r.reason));
+    }
+
+    function populatePriorityReasons() {
+      const codes = new Set();
+      for (const ds of [datasets.coop, datasets.logistics]) {
+        for (const r of ds.rows) codes.add(r.reason);
+      }
+      const sorted = sortReasonCodes([...codes]);
+      const prev = selectedValues("prio-reasons");
+      fillMsel(
+        "prio-reasons",
+        sorted.map((c) => ({ value: c, label: typeLabel(c) })),
+        prev.filter((c) => codes.has(c))
+      );
+    }
+
+    function syncPriorityTabUi() {
+      const mode = priorityState.mode;
+      document.querySelectorAll("#view-priority [data-prio]").forEach((btn) => {
+        btn.classList.toggle("active", btn.getAttribute("data-prio") === mode);
+      });
+      $("prio-amount-card")?.classList.toggle("dimmed", mode === "days");
+      $("prio-priority-card")?.classList.toggle("dimmed", mode === "amount");
+
+      const allRows = [...datasets.coop.rows, ...datasets.logistics.rows];
+      const hasDays = datasetHasDays(allRows);
+      const note = $("prio-days-note");
+      if (!note) return;
+      if (!allRows.length) note.textContent = "Load COOP and/or Logistics first.";
+      else if (!hasDays && mode !== "amount") {
+        note.textContent = "Days in Arrears not found in saved data — re-drop the Excel file. Or switch to Amount only.";
+      } else {
+        note.textContent = "Drag Low / Medium / High / Urgent starts — the number on the right is the exact cutoff. Below Low starts is outside the four tiers.";
+      }
+    }
+
+    function renderLevelCards(amtCuts, priCuts, mode, totalsByTier) {
+      const cards = $("prio-level-cards");
+      if (!cards) return;
+      const aBands = absoluteBands(amtCuts, "$");
+      const dBands = absoluteBands(priCuts, "d");
+      cards.className = "level-summary";
+      cards.innerHTML = PRIORITY_LEVELS.map((name, i) => {
+        let range;
+        if (mode === "amount") range = `A ${aBands[i].label}`;
+        else if (mode === "days") range = `D ${dBands[i].label}`;
+        else range = `A ${aBands[i].label} · D ${dBands[i].label}`;
+        const tot = totalsByTier?.[name];
+        const sumLine = tot ? moneyExact(tot.dollars) : "—";
+        return `<div class="level-card" style="border-left:3px solid ${PRIORITY_COLORS[name]}">
+          <div class="lc-name" style="color:${PRIORITY_COLORS[name]}">${name}</div>
+          <div class="lc-range">${escapeHtml(range)}</div>
+          <div class="lc-sum">${sumLine}</div>
+        </div>`;
+      }).join("");
+    }
+
+    function heatColorIntensity(t) {
+      const x = Math.max(0, Math.min(1, t));
+      const r = Math.round(255 * Math.min(1, x * 1.35));
+      const g = Math.round(230 * (1 - x) + 50 * x);
+      const b = Math.round(245 * (1 - x * 0.8));
+      return { bg: `rgb(${r},${g},${b})`, text: x > 0.55 ? "#fff" : "#1a1a2e" };
+    }
+
+    function renderPriorityHeatmap(mode, scored, amtCuts, priCuts) {
+      const el = $("prio-heatmap");
+      const title = $("prio-heat-title");
+      const cap = $("prio-heat-cap");
+      const status = $("prio-status");
+      if (!el) return;
+
+      const minRank = priorityState.minLevel;
+      const minLab = minLevelLabel(minRank);
+      const aBands = absoluteBands(amtCuts, "$");
+      const dBands = absoluteBands(priCuts, "d");
+
+      if (title) title.textContent = "Priority heatmap — total |Amount| by bucket";
+      if (cap) {
+        if (mode === "amount") cap.textContent = "Amount only. Cell color = relative $ heat; value = sum of |Amount| in that tier.";
+        else if (mode === "days") cap.textContent = "Days only. Cell color = relative $ heat; value = sum of |Amount| in that tier.";
+        else cap.textContent = "Both (AND). Cell color = relative $ heat; value = sum of |Amount| for Amount × Days.";
+      }
+
+      const grid = {};
+      for (const a of PRIORITY_LEVELS) {
+        grid[a] = Object.fromEntries(PRIORITY_LEVELS.map((d) => [d, { lines: 0, dollars: 0 }]));
+      }
+      for (const { amountTier: a, daysTier: d, row } of scored) {
+        if (!grid[a] || !grid[a][d]) continue;
+        grid[a][d].lines += 1;
+        grid[a][d].dollars += row.absAmount;
+      }
+
+      const totalsByTier = Object.fromEntries(PRIORITY_LEVELS.map((t) => [t, { lines: 0, dollars: 0 }]));
+      if (mode === "amount") {
+        for (const a of PRIORITY_LEVELS) {
+          for (const d of PRIORITY_LEVELS) {
+            totalsByTier[a].lines += grid[a][d].lines;
+            totalsByTier[a].dollars += grid[a][d].dollars;
+          }
+        }
+      } else if (mode === "days") {
+        for (const d of PRIORITY_LEVELS) {
+          for (const a of PRIORITY_LEVELS) {
+            totalsByTier[d].lines += grid[a][d].lines;
+            totalsByTier[d].dollars += grid[a][d].dollars;
+          }
+        }
+      } else {
+        for (const a of PRIORITY_LEVELS) {
+          for (const d of PRIORITY_LEVELS) {
+            totalsByTier[a].lines += grid[a][d].lines;
+            totalsByTier[a].dollars += grid[a][d].dollars;
+          }
+        }
+      }
+      renderLevelCards(amtCuts, priCuts, mode, totalsByTier);
+
+      if (mode === "amount" || mode === "days") {
+        const bands = mode === "amount" ? aBands : dBands;
+        let maxD = 1;
+        for (const tier of PRIORITY_LEVELS) maxD = Math.max(maxD, totalsByTier[tier].dollars);
+        let included = 0;
+        el.innerHTML = `<div class="prio-heat-1d">${PRIORITY_LEVELS.map((tier, i) => {
+          const ok = i >= minRank;
+          if (ok) included += 1;
+          const t = totalsByTier[tier];
+          const { bg, text } = heatColorIntensity(t.dollars / maxD);
+          return `<div class="prio-sum-cell ${ok ? "" : "prio-cell-ex"}" style="background:${bg};color:${text}">
+            <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;opacity:0.9">${tier}</div>
+            <div class="psum" style="color:inherit;margin-top:8px">${moneyExact(t.dollars)}</div>
+            <div class="plines" style="color:inherit">${t.lines.toLocaleString()} lines</div>
+            <div class="plines" style="color:inherit;opacity:0.75">${escapeHtml(bands[i].label)}</div>
+          </div>`;
+        }).join("")}</div>`;
+        if (status) {
+          status.textContent = `${mode === "amount" ? "Amount" : "Days"} only at ${minLab}: ${included}/4 tiers included · grand total ${moneyExact(scored.reduce((s, x) => s + x.row.absAmount, 0))}`;
+        }
+        return;
+      }
+
+      // Both — heat matrix of total $
+      let maxCell = 1;
+      for (const a of PRIORITY_LEVELS) {
+        for (const d of PRIORITY_LEVELS) maxCell = Math.max(maxCell, grid[a][d].dollars);
+      }
+
+      let includedCombos = 0;
+      let html = `<table class="filter-heat-table prio-sum-table"><thead><tr>
+        <th style="text-align:left;color:#888;font-weight:600">Days ↓ / Amount →</th>
+        ${PRIORITY_LEVELS.map((a, i) => `<th>${a}<span class="th-range">${escapeHtml(aBands[i].label)}</span></th>`).join("")}
+        <th>Row total</th>
+      </tr></thead><tbody>`;
+      for (const d of [...PRIORITY_LEVELS].reverse()) {
+        const di = tierRank(d);
+        let rowD = 0;
+        let rowL = 0;
+        html += `<tr><td class="row-lab" style="color:${PRIORITY_COLORS[d]}">${d}<span class="th-range">${escapeHtml(dBands[di].label)}</span></td>`;
+        for (const a of PRIORITY_LEVELS) {
+          const ok = cellIncluded("both", a, d, minRank);
+          if (ok) includedCombos += 1;
+          const c = grid[a][d];
+          rowD += c.dollars;
+          rowL += c.lines;
+          const { bg, text } = heatColorIntensity(c.dollars / maxCell);
+          html += `<td class="prio-sum-cell ${ok ? "" : "prio-cell-ex"}" style="background:${bg};color:${text};border-color:transparent">
+            <div class="psum" style="color:inherit">${c.lines ? moneyExact(c.dollars) : "—"}</div>
+            <div class="plines" style="color:inherit">${c.lines ? c.lines.toLocaleString() + " lines" : ""}</div>
+          </td>`;
+        }
+        const { bg: rbg, text: rtext } = heatColorIntensity(rowD / maxCell);
+        html += `<td class="prio-sum-cell" style="background:${rbg};color:${rtext};border-color:transparent">
+          <div class="psum" style="color:inherit">${moneyExact(rowD)}</div>
+          <div class="plines" style="color:inherit">${rowL.toLocaleString()} lines</div>
+        </td></tr>`;
+      }
+      html += `<tr><td class="row-lab" style="color:#444">Col total</td>`;
+      let grand = 0;
+      let grandL = 0;
+      for (const a of PRIORITY_LEVELS) {
+        let colD = 0;
+        let colL = 0;
+        for (const d of PRIORITY_LEVELS) {
+          colD += grid[a][d].dollars;
+          colL += grid[a][d].lines;
+        }
+        grand += colD;
+        grandL += colL;
+        const { bg, text } = heatColorIntensity(colD / maxCell);
+        html += `<td class="prio-sum-cell" style="background:${bg};color:${text};border-color:transparent">
+          <div class="psum" style="color:inherit">${moneyExact(colD)}</div>
+          <div class="plines" style="color:inherit">${colL.toLocaleString()} lines</div>
+        </td>`;
+      }
+      const { bg: gbg, text: gtext } = heatColorIntensity(1);
+      html += `<td class="prio-sum-cell" style="background:${gbg};color:${gtext};border-color:transparent">
+        <div class="psum" style="color:inherit">${moneyExact(grand)}</div>
+        <div class="plines" style="color:inherit">${grandL.toLocaleString()} lines</div>
+      </td></tr>`;
+      html += `</tbody></table>`;
+      el.innerHTML = html;
+      if (status) {
+        status.textContent = `Both (AND) at ${minLab}: ${includedCombos}/16 buckets in scope · grand total ${moneyExact(grand)}`;
+      }
+    }
+
+    function snapCutsToSorted(sorted, ids, kind) {
+      if (!sorted.length || ids.length < 4) return;
+      const [lowId, medId, highId, urgId] = ids;
+      let low = Math.round(percentileValue(sorted, 5));
+      let med = Math.round(percentileValue(sorted, 35));
+      let high = Math.round(percentileValue(sorted, 60));
+      let urg = Math.round(percentileValue(sorted, 80));
+      const step = kind === "$" ? 10 : 1;
+      if (med <= low) med = low + step;
+      if (high <= med) high = med + step;
+      if (urg <= high) urg = high + step;
+      const maxEl = $(urgId);
+      const max = maxEl ? Number(maxEl.max) : urg;
+      if (urg > max) {
+        urg = max;
+        if (high >= urg) high = Math.max(0, urg - step);
+        if (med >= high) med = Math.max(0, high - step);
+        if (low >= med) low = Math.max(0, med - step);
+      }
+      if ($(lowId)) $(lowId).value = String(Math.max(0, low));
+      if ($(medId)) $(medId).value = String(med);
+      if ($(highId)) $(highId).value = String(high);
+      if ($(urgId)) $(urgId).value = String(urg);
+    }
+
+    function refreshPriority() {
+      const table = $("prio-bucket-table");
+      const status = $("prio-status");
+      if (!$("prio-heatmap")) return;
+
+      populatePriorityReasons();
+      syncPriorityTabUi();
+
+      const mode = priorityState.mode;
+      const rows = prioritySourceRows();
+      const hasDays = datasetHasDays(rows);
+
+      if ($("prio-min-level")) $("prio-min-level").value = String(priorityState.minLevel);
+
+      if (!rows.length) {
+        $("prio-heatmap").innerHTML = `<div class="prio-empty">Load COOP and/or Logistics first (use the COOP or Logistics tab, then come back here).</div>`;
+        if ($("prio-level-cards")) $("prio-level-cards").innerHTML = "";
+        if (table) table.innerHTML = "";
+        if (status) status.textContent = "";
+        return;
+      }
+
+      const amtSorted = rows.map((r) => r.absAmount).filter(Number.isFinite).sort((a, b) => a - b);
+      const daySorted = rows.map((r) => r.daysInArrears).filter((d) => d != null && Number.isFinite(d)).sort((a, b) => a - b);
+      scaleIndepSliders(amtSorted, daySorted);
+
+      // Both / Days need real Days values — do not fake Days=Low (that made the matrix look uncombined)
+      if (mode !== "amount" && !daySorted.length) {
+        $("prio-heatmap").innerHTML = `<div class="prio-empty">
+          <b>Both (AND)</b> needs Days in arrears on each line.<br/>
+          Re-drop the Excel on the COOP / Logistics tab (Forget saved data first if needed), or switch to <b>Amount only</b>.
+        </div>`;
+        if ($("prio-level-cards")) $("prio-level-cards").innerHTML = "";
+        if (table) table.innerHTML = "";
+        if (status) {
+          status.textContent = `No Days values on ${rows.length.toLocaleString()} filtered lines — Amount × Days cannot combine yet.`;
+        }
+        return;
+      }
+
+      const amtCuts = getAmountCuts();
+      const priCuts = getPriorityCuts();
+      syncIndepSliderLabels(amtCuts, priCuts);
+
+      const scored = [];
+      let skippedNoDays = 0;
+      let belowLowDollars = 0;
+      let belowLowLines = 0;
+      for (const row of rows) {
+        const amountTier = tierFromCuts(row.absAmount, amtCuts);
+        let daysTier = null;
+        if (row.daysInArrears != null && Number.isFinite(row.daysInArrears)) {
+          daysTier = tierFromCuts(row.daysInArrears, priCuts);
+        } else if (mode === "amount") {
+          daysTier = "Low"; // placeholder axis only for Amount-only aggregation
+        } else {
+          skippedNoDays += 1;
+          continue;
+        }
+
+        if (mode === "amount" && !amountTier) {
+          belowLowDollars += row.absAmount;
+          belowLowLines += 1;
+          continue;
+        }
+        if (mode === "days" && !daysTier) {
+          belowLowDollars += row.absAmount;
+          belowLowLines += 1;
+          continue;
+        }
+        if (mode === "both" && (!amountTier || !daysTier)) {
+          belowLowDollars += row.absAmount;
+          belowLowLines += 1;
+          continue;
+        }
+
+        scored.push({ row, amountTier, daysTier });
+      }
+
+      if (!scored.length) {
+        $("prio-heatmap").innerHTML = `<div class="prio-empty">No rows land in the Low–Urgent bands with the current starts. Try <b>Snap Days cuts to data</b> / <b>Snap Amount cuts to data</b>, or lower Medium starts.</div>`;
+        if (table) table.innerHTML = "";
+        return;
+      }
+
+      renderPriorityHeatmap(mode, scored, amtCuts, priCuts);
+
+      const minRank = priorityState.minLevel;
+      const included = scored.filter((x) => cellIncluded(mode, x.amountTier, x.daysTier, minRank));
+      const allD = scored.reduce((s, x) => s + x.row.absAmount, 0) || 1;
+      const incD = included.reduce((s, x) => s + x.row.absAmount, 0);
+
+      // How many distinct Days tiers are populated? (diagnose “not combined”)
+      const daysUsed = new Set(scored.map((x) => x.daysTier));
+      const amtUsed = new Set(scored.map((x) => x.amountTier));
+
+      if (table) {
+        if (mode === "both") {
+          let html = `<thead><tr><th>Amount</th><th>Days</th><th>Total |Amount|</th><th>Lines</th><th>$ % of all</th></tr></thead><tbody>`;
+          for (const a of PRIORITY_LEVELS) {
+            for (const d of PRIORITY_LEVELS) {
+              if (!cellIncluded("both", a, d, minRank)) continue;
+              const subset = scored.filter((x) => x.amountTier === a && x.daysTier === d);
+              if (!subset.length) continue;
+              const dollars = subset.reduce((s, x) => s + x.row.absAmount, 0);
+              html += `<tr>
+                <td style="color:${PRIORITY_COLORS[a]};font-weight:700">${a}</td>
+                <td style="color:${PRIORITY_COLORS[d]};font-weight:700">${d}</td>
+                <td class="prio-sum-cell">${moneyExact(dollars)}</td>
+                <td>${subset.length.toLocaleString()}</td>
+                <td>${pct(dollars, allD)}</td>
+              </tr>`;
+            }
+          }
+          html += `</tbody>`;
+          table.innerHTML = html;
+        } else {
+          const key = mode === "amount" ? "amountTier" : "daysTier";
+          const cuts = mode === "amount" ? amtCuts : priCuts;
+          const bands = absoluteBands(cuts, mode === "amount" ? "$" : "d");
+          let html = `<thead><tr><th>Tier</th><th>Criteria</th><th>Total |Amount|</th><th>Lines</th><th>$ % of all</th></tr></thead><tbody>`;
+          PRIORITY_LEVELS.forEach((tier, i) => {
+            if (i < minRank) return;
+            const subset = scored.filter((x) => x[key] === tier);
+            const dollars = subset.reduce((s, x) => s + x.row.absAmount, 0);
+            html += `<tr>
+              <td style="color:${PRIORITY_COLORS[tier]};font-weight:700">${tier}</td>
+              <td style="text-align:left">${escapeHtml(bands[i].label)}</td>
+              <td class="prio-sum-cell">${moneyExact(dollars)}</td>
+              <td>${subset.length.toLocaleString()}</td>
+              <td>${pct(dollars, allD)}</td>
+            </tr>`;
+          });
+          html += `</tbody>`;
+          table.innerHTML = html;
+        }
+      }
+
+      if (status) {
+        const base = status.textContent || "";
+        const extra = [];
+        extra.push(`${included.length.toLocaleString()} included lines`);
+        extra.push(`${moneyExact(incD)} included $`);
+        if (daySorted.length) {
+          extra.push(`Days on ${daySorted.length.toLocaleString()} lines (min ${Math.round(daySorted[0])}d · med ${Math.round(percentileValue(daySorted, 50))}d · max ${Math.round(daySorted[daySorted.length - 1])}d)`);
+        }
+        if (mode === "both" && daysUsed.size < 2) {
+          extra.push(`Only Days=${[...daysUsed].join("/")} is populated — click Snap Days cuts to data so Medium/High/Urgent fill`);
+        }
+        if (mode === "both" && amtUsed.size < 2) {
+          extra.push(`Only Amount=${[...amtUsed].join("/")} is populated — try Snap Amount cuts to data`);
+        }
+        if (belowLowLines) {
+          extra.push(`${belowLowLines.toLocaleString()} below Low starts (${moneyExact(belowLowDollars)})`);
+        }
+        if (skippedNoDays) extra.push(`${skippedNoDays.toLocaleString()} skipped (no days)`);
+        status.textContent = `${base} · ${extra.join(" · ")}`;
+      }
+    }
+
+    function refresh(ds) {
+      if (!ds.rows.length) return;
+      const rule = getAmountRule(ds);
+      const rows = filteredRows(ds);
+
+      if (ds.id === "coop") {
+        const stats = groupStats(rows, rule, (r) => r.division);
+        renderKpis(ds, stats);
+        renderCoverageCharts(ds, rows, rule);
+        renderPairedCharts(
+          "charts-coop",
+          stats,
+          THEME.coop.thr,
+          DIVISION_ORDER,
+          "Threshold $ vs Total $ by Division",
+          "No. of Threshold Lines vs No. of Claim Lines by Division"
+        );
+        renderCoopTable(rows, rule);
+        renderTopClientsTable(ds, rows, rule);
+      } else {
+        const stats = groupStats(rows, rule, (r) => typeLabel(r.reason));
+        const typeOrder = sortReasonCodes([...new Set(rows.map((r) => r.reason))])
+          .map((c) => typeLabel(c));
+        renderKpis(ds, stats);
+        renderCoverageCharts(ds, rows, rule);
+        renderPairedCharts(
+          "charts-logistics",
+          stats,
+          THEME.logistics.thr,
+          typeOrder,
+          "Threshold $ vs Total $ by Reason Code",
+          "Threshold Lines vs Claim Lines by Reason Code"
+        );
+        renderLogisticsByDivisionCharts(rows, rule);
+        renderLogisticsTable(rows, rule);
+        renderTopClientsTable(ds, rows, rule);
+      }
+      schedulePersist(ds);
+      if (!$("view-priority")?.classList.contains("hidden")) refreshPriority();
+    }
+
+    function populateFilters(ds) {
+      const years = [...new Set(ds.rows.map((r) => r.year).filter((y) => y != null))].sort((a, b) => a - b);
+      const divisions = [...new Set(ds.rows.map((r) => r.division))].sort((a, b) => {
+        const ia = DIVISION_ORDER.indexOf(a);
+        const ib = DIVISION_ORDER.indexOf(b);
+        if (ia >= 0 || ib >= 0) return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
+        return a.localeCompare(b);
+      });
+
+      const prevYears = selectedValues(`year-${ds.id}`);
+      const prevDivs = selectedValues(`div-${ds.id}`);
+
+      fillMsel(
+        `year-${ds.id}`,
+        years.map((y) => ({ value: y, label: String(y) })),
+        prevYears.filter((y) => years.includes(Number(y)) || years.includes(y))
+      );
+
+      fillMsel(
+        `div-${ds.id}`,
+        divisions.map((d) => {
+          const sample = ds.rows.find((r) => r.division === d);
+          const pretty = DIVISION_MAP[sample?.baCode]
+            ? `${DIVISION_MAP[sample.baCode]} (${sample.baCode})`
+            : d;
+          return { value: d, label: pretty };
+        }),
+        prevDivs.filter((d) => divisions.includes(d))
+      );
+
+      populateMonths(ds);
+      if (ds.id === "logistics") populateReasonCodes(ds);
+      const maxAbs = Math.max(...ds.rows.map((r) => r.absAmount));
+      const slider = $(`thr-slider-${ds.id}`);
+      slider.max = String(Math.max(Math.min(Math.ceil(maxAbs), 20000), 2000));
+    }
+
+    function populateReasonCodes(ds) {
+      const codes = sortReasonCodes([...new Set(ds.rows.map((r) => r.reason).filter(Boolean))]);
+      const prev = ds._pendingReasons != null
+        ? ds._pendingReasons
+        : selectedValues("type-logistics");
+      ds._pendingReasons = null;
+
+      fillMsel(
+        "type-logistics",
+        codes.map((code) => {
+          const count = ds.rows.filter((r) => r.reason === code).length;
+          return {
+            value: code,
+            label: `${typeLabel(code)} · ${count.toLocaleString()} lines`,
+          };
+        }),
+        prev.filter((c) => codes.includes(c))
+      );
+    }
+
+    function populateMonths(ds) {
+      const years = selectedValues(`year-${ds.id}`);
+      const yearSet = years.length ? new Set(years) : null;
+      const months = [...new Set(
+        ds.rows
+          .filter((r) => r.month != null && (!yearSet || yearSet.has(String(r.year))))
+          .map((r) => r.month)
+      )].sort((a, b) => a - b);
+      const prev = selectedValues(`month-${ds.id}`);
+      fillMsel(
+        `month-${ds.id}`,
+        months.map((m) => ({ value: m, label: MONTH_NAMES[m - 1] })),
+        prev.filter((m) => months.includes(Number(m)))
+      );
+    }
+
+    function lockCurrent(ds) {
+      const rule = getAmountRule(ds);
+      const rows = filteredRows(ds);
+      const groupFn = ds.id === "coop"
+        ? (r) => r.division
+        : (r) => typeLabel(r.reason);
+      const order = ds.id === "coop"
+        ? DIVISION_ORDER
+        : sortReasonCodes([...new Set(rows.map((r) => r.reason))]).map((c) => typeLabel(c));
+      const stats = groupStats(rows, rule, groupFn);
+      const sels = filterSelections(ds);
+      const reasonFocus = ds.id === "logistics"
+        ? formatMultiLabel(selectedReasonCodes().map(typeLabel), "All reason codes")
+        : "";
+      ds.locks.push({
+        id: ds.nextLockId++,
+        threshold: rule.max,
+        bandLabel: formatAmountRule(rule),
+        mode: rule.mode,
+        year: formatMultiLabel(sels.years, "All years"),
+        monthLabel: formatMultiLabel(sels.months, "All months", (m) => MONTH_NAMES[Number(m) - 1] || m),
+        division: formatMultiLabel(sels.divisions, "All divisions"),
+        reasonFocus,
+        excludeNegatives: !!ds.excludeNegatives,
+        underLines: stats.underLines,
+        totalLines: stats.totalLines,
+        underDollars: stats.underDollars,
+        totalDollars: stats.totalDollars,
+        groups: sortGroups(stats.groups, order),
+      });
+      renderLocks(ds);
+      // Ensure coverage charts exist, then pin lock dots on both
+      if (ds.rows.length) {
+        renderCoverageCharts(ds, filteredRows(ds), rule);
+      }
+      applyCoverageLockMarks(ds);
+      schedulePersist(ds);
+    }
+
+    async function loadFile(ds, file) {
+      const status = $(`status-${ds.id}`);
+      status.className = "status";
+      status.textContent = `Reading ${file.name}…`;
+      try {
+        const buffer = await file.arrayBuffer();
+        const workbook = XLSX.read(buffer, { type: "array", cellDates: true });
+        const parsed = parseWorkbook(workbook);
+        ds.rows = parsed.rows;
+        ds.locks = [];
+        ds.nextLockId = 1;
+        ds.coverageCache = null;
+        ds.fileMeta = {
+          fileName: file.name,
+          sheetName: parsed.sheetName,
+        };
+        destroyCoverageCharts(ds);
+        populateFilters(ds);
+        $(`app-${ds.id}`).classList.remove("hidden");
+        const meta = $(`meta-${ds.id}`);
+        meta.classList.add("on");
+        meta.textContent =
+          `${file.name} · “${parsed.sheetName}” · ${ds.rows.length.toLocaleString()} lines · saved in this browser`;
+        status.className = "status ok";
+        status.textContent = "Ready. Data will stay available next time you open this page.";
+        refresh(ds);
+        renderLocks(ds);
+        await persistDataset(ds);
+      } catch (err) {
+        status.className = "status err";
+        status.textContent = err.message || String(err);
+      }
+    }
+
+    function wireDataset(ds) {
+      const drop = $(`drop-${ds.id}`);
+      const input = $(`file-${ds.id}`);
+      drop.addEventListener("click", () => input.click());
+      drop.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") input.click();
+      });
+      input.addEventListener("change", () => {
+        if (input.files?.[0]) loadFile(ds, input.files[0]);
+      });
+      ["dragenter", "dragover"].forEach((ev) => {
+        drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add("dragover"); });
+      });
+      ["dragleave", "drop"].forEach((ev) => {
+        drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove("dragover"); });
+      });
+      drop.addEventListener("drop", (e) => {
+        const f = e.dataTransfer?.files?.[0];
+        if (f) loadFile(ds, f);
+      });
+
+      const thr = $(`thr-${ds.id}`);
+      const slider = $(`thr-slider-${ds.id}`);
+      thr.addEventListener("input", () => { slider.value = thr.value; refresh(ds); });
+      slider.addEventListener("input", () => { thr.value = slider.value; refresh(ds); });
+      $(`thr-min-${ds.id}`).addEventListener("input", () => refresh(ds));
+      $(`thr-max-${ds.id}`).addEventListener("input", () => {
+        $(`thr-${ds.id}`).value = $(`thr-max-${ds.id}`).value;
+        $(`thr-slider-${ds.id}`).value = $(`thr-max-${ds.id}`).value;
+        refresh(ds);
+      });
+
+      $(`mode-${ds.id}`).addEventListener("click", (e) => {
+        const btn = e.target.closest("[data-mode]");
+        if (!btn) return;
+        ds.amountMode = btn.getAttribute("data-mode");
+        ds.coverageCache = null;
+        destroyCoverageCharts(ds);
+        syncAmountModeUi(ds);
+        refresh(ds);
+      });
+
+      $(`exclude-neg-${ds.id}`).addEventListener("click", () => {
+        ds.excludeNegatives = !ds.excludeNegatives;
+        ds.coverageCache = null;
+        destroyCoverageCharts(ds);
+        syncExcludeNegUi(ds);
+        refresh(ds);
+      });
+
+      $(`lock-${ds.id}`).addEventListener("click", () => lockCurrent(ds));
+    }
+
+    function wirePriorityTab() {
+      document.addEventListener("click", (e) => {
+        const btn = e.target.closest("[data-prio]");
+        if (!btn || !btn.closest("#view-priority")) return;
+        e.preventDefault();
+        priorityState.mode = btn.getAttribute("data-prio");
+        refreshPriority();
+      });
+      const labelFmt = {
+        "amt-low": moneyExact,
+        "amt-med": moneyExact,
+        "amt-high": moneyExact,
+        "amt-urgent": moneyExact,
+        "pri-low": (v) => `${Math.round(Number(v) || 0)}d`,
+        "pri-med": (v) => `${Math.round(Number(v) || 0)}d`,
+        "pri-high": (v) => `${Math.round(Number(v) || 0)}d`,
+        "pri-urgent": (v) => `${Math.round(Number(v) || 0)}d`,
+      };
+      Object.keys(labelFmt).forEach((id) => {
+        $(id)?.addEventListener("input", (e) => {
+          const valEl = $(`${id}-val`);
+          if (valEl) valEl.textContent = labelFmt[id](e.target.value);
+          refreshPriority();
+        });
+      });
+      $("prio-min-level")?.addEventListener("change", () => {
+        priorityState.minLevel = Number($("prio-min-level").value) || 0;
+        refreshPriority();
+      });
+      $("prio-snap-amt")?.addEventListener("click", () => {
+        const rows = prioritySourceRows();
+        const amtSorted = rows.map((r) => r.absAmount).filter(Number.isFinite).sort((a, b) => a - b);
+        scaleIndepSliders(amtSorted, []);
+        snapCutsToSorted(amtSorted, ["amt-low", "amt-med", "amt-high", "amt-urgent"], "$");
+        refreshPriority();
+      });
+      $("prio-snap-days")?.addEventListener("click", () => {
+        const rows = prioritySourceRows();
+        const daySorted = rows.map((r) => r.daysInArrears).filter((d) => d != null && Number.isFinite(d)).sort((a, b) => a - b);
+        if (!daySorted.length) {
+          alert("No Days in arrears on the current rows. Re-drop the Excel file first.");
+          return;
+        }
+        const amtSorted = rows.map((r) => r.absAmount).filter(Number.isFinite).sort((a, b) => a - b);
+        scaleIndepSliders(amtSorted, daySorted);
+        snapCutsToSorted(daySorted, ["pri-low", "pri-med", "pri-high", "pri-urgent"], "d");
+        refreshPriority();
+      });
+    }
+
+    function syncPriorityThresholdFromSources() {
+      // no-op — independent percentile filters don't seed from write-off threshold
+    }
+
+    // Tabs
+    document.querySelectorAll(".tab").forEach((tab) => {
+      tab.addEventListener("click", () => {
+        document.querySelectorAll(".tab").forEach((t) => t.classList.remove("active"));
+        tab.classList.add("active");
+        const key = tab.getAttribute("data-tab");
+        $("view-coop").classList.toggle("hidden", key !== "coop");
+        $("view-logistics").classList.toggle("hidden", key !== "logistics");
+        $("view-priority").classList.toggle("hidden", key !== "priority");
+        if (key === "priority") {
+          syncPriorityThresholdFromSources();
+          refreshPriority();
+        }
+      });
+    });
+
+    document.querySelectorAll("[data-preset]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const key = btn.getAttribute("data-preset");
+        const v = btn.getAttribute("data-v");
+        $(`thr-${key}`).value = v;
+        $(`thr-slider-${key}`).value = v;
+        $(`thr-max-${key}`).value = v;
+        refresh(datasets[key]);
+      });
+    });
+
+    wireDataset(datasets.coop);
+    wireDataset(datasets.logistics);
+    wirePriorityTab();
+    syncAmountModeUi(datasets.coop);
+    syncAmountModeUi(datasets.logistics);
+    syncExcludeNegUi(datasets.coop);
+    syncExcludeNegUi(datasets.logistics);
+    renderLocks(datasets.coop);
+    renderLocks(datasets.logistics);
+
+    // Restore last session from IndexedDB (same browser / origin)
+    Promise.all([
+      restoreDataset(datasets.coop),
+      restoreDataset(datasets.logistics),
+    ]).then(() => {
+      syncPriorityTabUi();
+      refreshPriority();
+    }).catch((err) => console.warn("Restore failed:", err));
+  </script>
+</body>
+</html>

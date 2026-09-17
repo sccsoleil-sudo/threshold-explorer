@@ -1,0 +1,11 @@
+# Local claim data — do not publish
+*.xlsx
+*.xls
+*.csv
+
+# Local share packs / OS junk
+threshold-explorer-share.zip
+.DS_Store
+*.log
+.env
+.env.*
