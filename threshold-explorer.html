@@ -3961,9 +3961,8 @@
       populatePriorityReasons();
       syncPriorityTabUi();
 
-      const mode = priorityState.mode;
+      let mode = priorityState.mode;
       const rows = prioritySourceRows();
-      const hasDays = datasetHasDays(rows);
 
       if ($("prio-min-level")) $("prio-min-level").value = String(priorityState.minLevel);
 
@@ -3976,81 +3975,97 @@
       }
 
       const amtSorted = rows.map((r) => r.absAmount).filter(Number.isFinite).sort((a, b) => a - b);
-      const daySorted = rows.map((r) => r.daysInArrears).filter((d) => d != null && Number.isFinite(d)).sort((a, b) => a - b);
+      let daySorted = rows.map((r) => r.daysInArrears).filter((d) => d != null && Number.isFinite(d)).sort((a, b) => a - b);
       scaleIndepSliders(amtSorted, daySorted);
 
-      // Both / Days need real Days values — do not fake Days=Low (that made the matrix look uncombined)
+      let daysFallbackNote = "";
+      // Always show a heat table: if Days missing, render Amount-only heat (keep mode chip as-is)
+      let effectiveMode = mode;
       if (mode !== "amount" && !daySorted.length) {
-        $("prio-heatmap").innerHTML = `<div class="prio-empty">
-          <b>Both (AND)</b> needs Days in arrears on each line.<br/>
-          Re-drop the Excel on the COOP / Logistics tab (Forget saved data first if needed), or switch to <b>Amount only</b>.
-        </div>`;
-        if ($("prio-level-cards")) $("prio-level-cards").innerHTML = "";
-        if (table) table.innerHTML = "";
-        if (status) {
-          status.textContent = `No Days values on ${rows.length.toLocaleString()} filtered lines — Amount × Days cannot combine yet.`;
-        }
-        return;
+        effectiveMode = "amount";
+        daysFallbackNote = "No Days values found — showing Amount-only heat. Re-drop Excel (or Forget saved data) to enable Both / Days.";
       }
 
-      const amtCuts = getAmountCuts();
-      const priCuts = getPriorityCuts();
+      let amtCuts = getAmountCuts();
+      let priCuts = getPriorityCuts();
+
+      function scoreRows(m, aCuts, pCuts) {
+        const scored = [];
+        let skippedNoDays = 0;
+        let belowLowDollars = 0;
+        let belowLowLines = 0;
+        for (const row of rows) {
+          const amountTier = tierFromCuts(row.absAmount, aCuts);
+          let daysTier = null;
+          if (row.daysInArrears != null && Number.isFinite(row.daysInArrears)) {
+            daysTier = tierFromCuts(row.daysInArrears, pCuts);
+          } else if (m === "amount") {
+            daysTier = "Low";
+          } else {
+            skippedNoDays += 1;
+            continue;
+          }
+
+          if (m === "amount" && !amountTier) {
+            belowLowDollars += row.absAmount;
+            belowLowLines += 1;
+            continue;
+          }
+          if (m === "days" && !daysTier) {
+            belowLowDollars += row.absAmount;
+            belowLowLines += 1;
+            continue;
+          }
+          if (m === "both" && (!amountTier || !daysTier)) {
+            belowLowDollars += row.absAmount;
+            belowLowLines += 1;
+            continue;
+          }
+          scored.push({ row, amountTier, daysTier });
+        }
+        return { scored, skippedNoDays, belowLowDollars, belowLowLines };
+      }
+
+      let { scored, skippedNoDays, belowLowDollars, belowLowLines } = scoreRows(effectiveMode, amtCuts, priCuts);
+
+      // If bands are empty because cuts are outside the data, snap once and retry
+      if (!scored.length) {
+        if (amtSorted.length) snapCutsToSorted(amtSorted, ["amt-low", "amt-med", "amt-high", "amt-urgent"], "$");
+        if (daySorted.length) snapCutsToSorted(daySorted, ["pri-low", "pri-med", "pri-high", "pri-urgent"], "d");
+        amtCuts = getAmountCuts();
+        priCuts = getPriorityCuts();
+        ({ scored, skippedNoDays, belowLowDollars, belowLowLines } = scoreRows(effectiveMode, amtCuts, priCuts));
+        if (scored.length) {
+          daysFallbackNote = (daysFallbackNote ? daysFallbackNote + " " : "") + "Cuts were outside the data — snapped to data percentiles so the heat table can fill.";
+        }
+      }
+
       syncIndepSliderLabels(amtCuts, priCuts);
 
-      const scored = [];
-      let skippedNoDays = 0;
-      let belowLowDollars = 0;
-      let belowLowLines = 0;
-      for (const row of rows) {
-        const amountTier = tierFromCuts(row.absAmount, amtCuts);
-        let daysTier = null;
-        if (row.daysInArrears != null && Number.isFinite(row.daysInArrears)) {
-          daysTier = tierFromCuts(row.daysInArrears, priCuts);
-        } else if (mode === "amount") {
-          daysTier = "Low"; // placeholder axis only for Amount-only aggregation
-        } else {
-          skippedNoDays += 1;
-          continue;
-        }
-
-        if (mode === "amount" && !amountTier) {
-          belowLowDollars += row.absAmount;
-          belowLowLines += 1;
-          continue;
-        }
-        if (mode === "days" && !daysTier) {
-          belowLowDollars += row.absAmount;
-          belowLowLines += 1;
-          continue;
-        }
-        if (mode === "both" && (!amountTier || !daysTier)) {
-          belowLowDollars += row.absAmount;
-          belowLowLines += 1;
-          continue;
-        }
-
-        scored.push({ row, amountTier, daysTier });
-      }
-
       if (!scored.length) {
-        $("prio-heatmap").innerHTML = `<div class="prio-empty">No rows land in the Low–Urgent bands with the current starts. Try <b>Snap Days cuts to data</b> / <b>Snap Amount cuts to data</b>, or lower Medium starts.</div>`;
+        $("prio-heatmap").innerHTML = `<div class="prio-empty">Still no rows in Low–Urgent bands. Click <b>Snap Amount cuts to data</b> / <b>Snap Days cuts to data</b>, or set Low starts to 0.</div>`;
         if (table) table.innerHTML = "";
+        if (status) status.textContent = daysFallbackNote || "";
         return;
       }
 
-      renderPriorityHeatmap(mode, scored, amtCuts, priCuts);
+      renderPriorityHeatmap(effectiveMode, scored, amtCuts, priCuts);
+
+      // Banner when we fell back from Both → Amount heat
+      if (daysFallbackNote && $("prio-heat-cap")) {
+        $("prio-heat-cap").textContent = daysFallbackNote;
+      }
 
       const minRank = priorityState.minLevel;
-      const included = scored.filter((x) => cellIncluded(mode, x.amountTier, x.daysTier, minRank));
+      const included = scored.filter((x) => cellIncluded(effectiveMode, x.amountTier, x.daysTier, minRank));
       const allD = scored.reduce((s, x) => s + x.row.absAmount, 0) || 1;
       const incD = included.reduce((s, x) => s + x.row.absAmount, 0);
 
-      // How many distinct Days tiers are populated? (diagnose “not combined”)
       const daysUsed = new Set(scored.map((x) => x.daysTier));
       const amtUsed = new Set(scored.map((x) => x.amountTier));
 
       if (table) {
-        if (mode === "both") {
+        if (effectiveMode === "both") {
           let html = `<thead><tr><th>Amount</th><th>Days</th><th>Total |Amount|</th><th>Lines</th><th>$ % of all</th></tr></thead><tbody>`;
           for (const a of PRIORITY_LEVELS) {
             for (const d of PRIORITY_LEVELS) {
@@ -4070,9 +4085,9 @@
           html += `</tbody>`;
           table.innerHTML = html;
         } else {
-          const key = mode === "amount" ? "amountTier" : "daysTier";
-          const cuts = mode === "amount" ? amtCuts : priCuts;
-          const bands = absoluteBands(cuts, mode === "amount" ? "$" : "d");
+          const key = effectiveMode === "amount" ? "amountTier" : "daysTier";
+          const cuts = effectiveMode === "amount" ? amtCuts : priCuts;
+          const bands = absoluteBands(cuts, effectiveMode === "amount" ? "$" : "d");
           let html = `<thead><tr><th>Tier</th><th>Criteria</th><th>Total |Amount|</th><th>Lines</th><th>$ % of all</th></tr></thead><tbody>`;
           PRIORITY_LEVELS.forEach((tier, i) => {
             if (i < minRank) return;
@@ -4099,16 +4114,17 @@
         if (daySorted.length) {
           extra.push(`Days on ${daySorted.length.toLocaleString()} lines (min ${Math.round(daySorted[0])}d · med ${Math.round(percentileValue(daySorted, 50))}d · max ${Math.round(daySorted[daySorted.length - 1])}d)`);
         }
-        if (mode === "both" && daysUsed.size < 2) {
-          extra.push(`Only Days=${[...daysUsed].join("/")} is populated — click Snap Days cuts to data so Medium/High/Urgent fill`);
+        if (effectiveMode === "both" && daysUsed.size < 2) {
+          extra.push(`Only Days=${[...daysUsed].join("/")} populated — click Snap Days cuts to data`);
         }
-        if (mode === "both" && amtUsed.size < 2) {
-          extra.push(`Only Amount=${[...amtUsed].join("/")} is populated — try Snap Amount cuts to data`);
+        if (amtUsed.size < 2) {
+          extra.push(`Only Amount=${[...amtUsed].join("/")} populated — try Snap Amount cuts to data`);
         }
         if (belowLowLines) {
           extra.push(`${belowLowLines.toLocaleString()} below Low starts (${moneyExact(belowLowDollars)})`);
         }
         if (skippedNoDays) extra.push(`${skippedNoDays.toLocaleString()} skipped (no days)`);
+        if (daysFallbackNote) extra.push(daysFallbackNote);
         status.textContent = `${base} · ${extra.join(" · ")}`;
       }
     }
