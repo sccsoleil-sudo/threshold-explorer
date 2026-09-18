@@ -894,18 +894,32 @@
     .indep-sub { font-size: 12px; font-weight: 500; color: #888; }
     .indep-row {
       display: grid;
-      grid-template-columns: 110px 1fr 88px;
+      grid-template-columns: 110px 1fr 100px;
       gap: 10px;
       align-items: center;
       margin-top: 8px;
     }
     .indep-lab { font-size: 13px; color: #333; }
     .indep-val {
+      display: none;
+    }
+    .indep-num {
+      width: 100%;
+      padding: 7px 8px;
+      border: 1px solid #d8dce8;
+      border-radius: 8px;
       font-size: 13px;
       font-weight: 700;
-      text-align: right;
       font-variant-numeric: tabular-nums;
-      white-space: nowrap;
+      font-family: inherit;
+      text-align: right;
+      color: #1a1a2e;
+      background: #fff;
+    }
+    .indep-num:focus {
+      outline: none;
+      border-color: #2649B2;
+      box-shadow: 0 0 0 3px rgba(38, 73, 178, 0.12);
     }
     .indep-row input[type="range"] {
       width: 100%;
@@ -1785,51 +1799,51 @@
 
         <div class="indep-filters">
           <div class="indep-card" id="prio-amount-card">
-            <h4>Amount <span class="indep-sub">(|Amount| $)</span></h4>
+            <h4>Amount <span class="indep-sub">(|Amount| $) — drag or type</span></h4>
             <div class="indep-row">
               <span class="indep-lab">Low starts</span>
               <input id="amt-low" type="range" min="0" max="20000" step="10" value="0" />
-              <span class="indep-val" id="amt-low-val">$0</span>
+              <input id="amt-low-num" class="indep-num" type="number" min="0" step="10" value="0" aria-label="Low starts dollars" />
             </div>
             <div class="indep-row">
               <span class="indep-lab">Medium starts</span>
               <input id="amt-med" type="range" min="0" max="20000" step="10" value="100" />
-              <span class="indep-val" id="amt-med-val">$100</span>
+              <input id="amt-med-num" class="indep-num" type="number" min="0" step="10" value="100" aria-label="Medium starts dollars" />
             </div>
             <div class="indep-row">
               <span class="indep-lab">High starts</span>
               <input id="amt-high" type="range" min="0" max="20000" step="10" value="400" />
-              <span class="indep-val" id="amt-high-val">$400</span>
+              <input id="amt-high-num" class="indep-num" type="number" min="0" step="10" value="400" aria-label="High starts dollars" />
             </div>
             <div class="indep-row">
               <span class="indep-lab">Urgent starts</span>
               <input id="amt-urgent" type="range" min="0" max="20000" step="10" value="1500" />
-              <span class="indep-val" id="amt-urgent-val">$1,500</span>
+              <input id="amt-urgent-num" class="indep-num" type="number" min="0" step="10" value="1500" aria-label="Urgent starts dollars" />
             </div>
             <button type="button" class="action" id="prio-snap-amt" style="margin-top:10px">Snap Amount cuts to data</button>
           </div>
 
           <div class="indep-card" id="prio-priority-card">
-            <h4>Days in arrears</h4>
+            <h4>Days in arrears <span class="indep-sub">— drag or type</span></h4>
             <div class="indep-row">
               <span class="indep-lab">Low starts</span>
               <input id="pri-low" type="range" min="0" max="365" step="1" value="0" />
-              <span class="indep-val" id="pri-low-val">0d</span>
+              <input id="pri-low-num" class="indep-num" type="number" min="0" step="1" value="0" aria-label="Low starts days" />
             </div>
             <div class="indep-row">
               <span class="indep-lab">Medium starts</span>
               <input id="pri-med" type="range" min="0" max="365" step="1" value="30" />
-              <span class="indep-val" id="pri-med-val">30d</span>
+              <input id="pri-med-num" class="indep-num" type="number" min="0" step="1" value="30" aria-label="Medium starts days" />
             </div>
             <div class="indep-row">
               <span class="indep-lab">High starts</span>
               <input id="pri-high" type="range" min="0" max="365" step="1" value="60" />
-              <span class="indep-val" id="pri-high-val">60d</span>
+              <input id="pri-high-num" class="indep-num" type="number" min="0" step="1" value="60" aria-label="High starts days" />
             </div>
             <div class="indep-row">
               <span class="indep-lab">Urgent starts</span>
               <input id="pri-urgent" type="range" min="0" max="365" step="1" value="90" />
-              <span class="indep-val" id="pri-urgent-val">90d</span>
+              <input id="pri-urgent-num" class="indep-num" type="number" min="0" step="1" value="90" aria-label="Urgent starts days" />
             </div>
             <button type="button" class="action" id="prio-snap-days" style="margin-top:10px">Snap Days cuts to data</button>
           </div>
@@ -3693,20 +3707,29 @@
     }
 
     function syncIndepSliderLabels(amtCuts, priCuts) {
-      const amtMap = [
-        ["amt-low-val", amtCuts[0]],
-        ["amt-med-val", amtCuts[1]],
-        ["amt-high-val", amtCuts[2]],
-        ["amt-urgent-val", amtCuts[3]],
-      ];
-      for (const [id, v] of amtMap) if ($(id)) $(id).textContent = moneyExact(v);
-      const priMap = [
-        ["pri-low-val", priCuts[0]],
-        ["pri-med-val", priCuts[1]],
-        ["pri-high-val", priCuts[2]],
-        ["pri-urgent-val", priCuts[3]],
-      ];
-      for (const [id, v] of priMap) if ($(id)) $(id).textContent = `${Math.round(v)}d`;
+      const amtIds = ["amt-low", "amt-med", "amt-high", "amt-urgent"];
+      amtIds.forEach((id, i) => {
+        const v = Math.round(Number(amtCuts[i]) || 0);
+        const range = $(id);
+        const num = $(`${id}-num`);
+        if (range) {
+          // Expand max if typed/snapped value is above current max
+          if (v > Number(range.max)) range.max = String(Math.ceil(v / 50) * 50);
+          range.value = String(v);
+        }
+        if (num) num.value = String(v);
+      });
+      const priIds = ["pri-low", "pri-med", "pri-high", "pri-urgent"];
+      priIds.forEach((id, i) => {
+        const v = Math.round(Number(priCuts[i]) || 0);
+        const range = $(id);
+        const num = $(`${id}-num`);
+        if (range) {
+          if (v > Number(range.max)) range.max = String(v);
+          range.value = String(v);
+        }
+        if (num) num.value = String(v);
+      });
     }
 
     function prioritySourceRows() {
@@ -3753,7 +3776,7 @@
       else if (!hasDays && mode !== "amount") {
         note.textContent = "Days in Arrears not found in saved data — re-drop the Excel file. Or switch to Amount only.";
       } else {
-        note.textContent = "Drag Low / Medium / High / Urgent starts — the number on the right is the exact cutoff. Below Low starts is outside the four tiers.";
+        note.textContent = "Drag the bar or type a number in the box. Below Low starts is outside the four tiers.";
       }
     }
 
@@ -3967,10 +3990,23 @@
       if ($("prio-min-level")) $("prio-min-level").value = String(priorityState.minLevel);
 
       if (!rows.length) {
-        $("prio-heatmap").innerHTML = `<div class="prio-empty">Load COOP and/or Logistics first (use the COOP or Logistics tab, then come back here).</div>`;
+        const hasRaw = datasets.coop.rows.length + datasets.logistics.rows.length;
+        if (!hasRaw) {
+          $("prio-heatmap").innerHTML = `<div class="prio-empty">
+            <b>No data loaded yet.</b><br/>
+            Open the <b>COOP</b> or <b>Logistics</b> tab, drop your Excel file, then come back here — the heat table will appear.
+          </div>`;
+        } else {
+          $("prio-heatmap").innerHTML = `<div class="prio-empty">
+            <b>No lines match the current Priority reason filter.</b><br/>
+            Clear reason codes (leave empty = all), or widen COOP/Logistics filters, then refresh this tab.
+          </div>`;
+        }
         if ($("prio-level-cards")) $("prio-level-cards").innerHTML = "";
         if (table) table.innerHTML = "";
-        if (status) status.textContent = "";
+        if (status) status.textContent = hasRaw
+          ? `${hasRaw.toLocaleString()} lines loaded, but 0 after Priority reason filter.`
+          : "";
         return;
       }
 
@@ -4377,23 +4413,38 @@
         priorityState.mode = btn.getAttribute("data-prio");
         refreshPriority();
       });
-      const labelFmt = {
-        "amt-low": moneyExact,
-        "amt-med": moneyExact,
-        "amt-high": moneyExact,
-        "amt-urgent": moneyExact,
-        "pri-low": (v) => `${Math.round(Number(v) || 0)}d`,
-        "pri-med": (v) => `${Math.round(Number(v) || 0)}d`,
-        "pri-high": (v) => `${Math.round(Number(v) || 0)}d`,
-        "pri-urgent": (v) => `${Math.round(Number(v) || 0)}d`,
-      };
-      Object.keys(labelFmt).forEach((id) => {
-        $(id)?.addEventListener("input", (e) => {
-          const valEl = $(`${id}-val`);
-          if (valEl) valEl.textContent = labelFmt[id](e.target.value);
+
+      const cutIds = [
+        "amt-low", "amt-med", "amt-high", "amt-urgent",
+        "pri-low", "pri-med", "pri-high", "pri-urgent",
+      ];
+      cutIds.forEach((id) => {
+        const range = $(id);
+        const num = $(`${id}-num`);
+        range?.addEventListener("input", () => {
+          if (num) num.value = String(Math.round(Number(range.value) || 0));
           refreshPriority();
         });
+        num?.addEventListener("change", () => {
+          let v = Math.max(0, Math.round(Number(num.value) || 0));
+          num.value = String(v);
+          if (range) {
+            if (v > Number(range.max)) range.max = String(id.startsWith("amt") ? Math.ceil(v / 50) * 50 : v);
+            range.value = String(Math.min(v, Number(range.max)));
+            // If typed above max we raised max; keep typed value
+            if (v > Number(range.max)) range.max = String(v);
+            range.value = String(v);
+          }
+          refreshPriority();
+        });
+        num?.addEventListener("keydown", (e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            num.blur();
+          }
+        });
       });
+
       $("prio-min-level")?.addEventListener("change", () => {
         priorityState.minLevel = Number($("prio-min-level").value) || 0;
         refreshPriority();
@@ -4401,6 +4452,10 @@
       $("prio-snap-amt")?.addEventListener("click", () => {
         const rows = prioritySourceRows();
         const amtSorted = rows.map((r) => r.absAmount).filter(Number.isFinite).sort((a, b) => a - b);
+        if (!amtSorted.length) {
+          alert("Load COOP or Logistics data first.");
+          return;
+        }
         scaleIndepSliders(amtSorted, []);
         snapCutsToSorted(amtSorted, ["amt-low", "amt-med", "amt-high", "amt-urgent"], "$");
         refreshPriority();
@@ -4416,6 +4471,11 @@
         scaleIndepSliders(amtSorted, daySorted);
         snapCutsToSorted(daySorted, ["pri-low", "pri-med", "pri-high", "pri-urgent"], "d");
         refreshPriority();
+      });
+
+      // Reason filter changes should rebuild the heat table
+      document.addEventListener("change", (e) => {
+        if (e.target?.closest?.("#prio-reasons")) refreshPriority();
       });
     }
 
