@@ -1231,6 +1231,112 @@
       line-height: 1.45;
     }
     .how-read b { color: #1a1a2e; }
+    .decision-layout {
+      display: grid;
+      grid-template-columns: 260px 1fr;
+      gap: 16px;
+      margin-top: 16px;
+      align-items: start;
+    }
+    @media (max-width: 900px) {
+      .decision-layout { grid-template-columns: 1fr; }
+    }
+    .decision-sidebar {
+      background: #f5f6fa;
+      border: 1px solid #e5e7f0;
+      border-radius: 14px;
+      padding: 16px;
+    }
+    .decision-sidebar h4 {
+      margin: 0 0 12px;
+      font-size: 14px;
+      color: #1a1a2e;
+    }
+    .decision-weight-row {
+      margin-bottom: 14px;
+    }
+    .decision-weight-row .dw-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 6px;
+      font-size: 13px;
+      font-weight: 700;
+      color: #333;
+    }
+    .decision-weight-row input[type="range"] {
+      width: 100%;
+      accent-color: #2649B2;
+    }
+    .decision-mix {
+      background: #fff;
+      border: 1px solid #e5e7f0;
+      border-radius: 12px;
+      padding: 12px 14px;
+      margin: 12px 0;
+      font-size: 13px;
+      line-height: 1.5;
+      color: #444;
+    }
+    .decision-mix .dm-title {
+      font-weight: 700;
+      color: #1a1a2e;
+      margin-bottom: 4px;
+    }
+    .decision-cell.lvl-Low { background: #fff; border: 1px solid #e5e7f0; }
+    .decision-cell.lvl-Low .dc-level { color: #888; }
+    .decision-cell.lvl-Medium { background: #e8f5e9; border: 1px solid #c8e6c9; }
+    .decision-cell.lvl-Medium .dc-level { color: #2e7d32; }
+    .decision-cell.lvl-High { background: #fde8e4; border: 1px solid #f5c6bc; }
+    .decision-cell.lvl-High .dc-level { color: #c0392b; }
+    .decision-cell.lvl-Urgent { background: #fff6e0; border: 1px solid #f0d78c; }
+    .decision-cell.lvl-Urgent .dc-level { color: #b8860b; }
+    .decision-cell {
+      border-radius: 10px;
+      padding: 14px 8px;
+      text-align: center;
+      min-width: 88px;
+      vertical-align: middle;
+    }
+    .decision-cell .dc-score {
+      font-size: 20px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      color: #1a1a2e;
+    }
+    .decision-cell .dc-level {
+      font-size: 12px;
+      font-weight: 700;
+      margin-top: 4px;
+    }
+    .decision-cards {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+      margin-top: 14px;
+    }
+    @media (max-width: 700px) {
+      .decision-cards { grid-template-columns: repeat(2, 1fr); }
+    }
+    .decision-card {
+      border-radius: 12px;
+      padding: 14px 16px;
+      border: 1px solid #e5e7f0;
+      background: #fff;
+    }
+    .decision-card .dc-name { font-size: 13px; font-weight: 700; color: #666; }
+    .decision-card .dc-count {
+      font-size: 26px;
+      font-weight: 700;
+      margin-top: 6px;
+      font-variant-numeric: tabular-nums;
+      color: #1a1a2e;
+    }
+    .decision-card.lvl-Low { background: #fff; border-color: #d8dce8; }
+    .decision-card.lvl-Medium { background: #e8f5e9; border-color: #a5d6a7; }
+    .decision-card.lvl-High { background: #fde8e4; border-color: #ef9a9a; }
+    .decision-card.lvl-Urgent { background: #fff6e0; border-color: #ffe082; }
+
     .weight-controls {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -1780,98 +1886,114 @@
     <div id="view-priority" class="view hidden">
       <div class="panel priority-panel">
         <div class="section-title">Priority explorer</div>
-        <p class="priority-sub"><b>No weighting.</b> Choose whether priority uses <b>Amount</b>, <b>Days in arrears</b>, or <b>both (AND)</b>. Set Low / Medium / High / Urgent starts for each factor. Values below Low starts are outside the four tiers.</p>
+        <p class="priority-sub">Blend <b>business priority</b> (Days in arrears) and <b>Amount</b> into one decision score. The heatmap always shows every Priority × Amount combination — no Excel needed for the matrix. Load data below to score real lines.</p>
 
-        <div class="filter-field" style="max-width:320px;margin-bottom:12px">
-          <label>Filter reason codes (optional)</label>
-          <div class="msel wide-panel" id="prio-reasons" data-msel data-all-label="All reason codes"></div>
-        </div>
-        <div class="table-note" id="prio-days-note" style="margin-bottom:12px"></div>
+        <div class="decision-layout">
+          <aside class="decision-sidebar">
+            <h4>Weights</h4>
+            <div class="decision-weight-row">
+              <div class="dw-head"><span>Priority weight</span><span id="w-prio-val">50</span></div>
+              <input id="w-prio" type="range" min="0" max="100" step="5" value="50" />
+            </div>
+            <div class="decision-weight-row">
+              <div class="dw-head"><span>Amount weight</span><span id="w-amt-val">50</span></div>
+              <input id="w-amt" type="range" min="0" max="100" step="5" value="50" />
+            </div>
+            <div class="decision-mix" id="decision-mix">
+              <div class="dm-title">Effective mix</div>
+              <div>Amount: <b id="mix-amt">50%</b></div>
+              <div>Priority: <b id="mix-prio">50%</b></div>
+            </div>
+            <button type="button" class="action" id="w-reset" style="width:100%">Reset to 50 / 50</button>
 
-        <div class="indep-mode-bar">
-          <span class="indep-mode-note">What should determine priority?</span>
-          <div class="mode-row prio-enter-toggle" id="prio-mode-criteria">
-            <button type="button" class="mode-chip" data-prio="amount">Amount only</button>
-            <button type="button" class="mode-chip" data-prio="days">Days only</button>
-            <button type="button" class="mode-chip active" data-prio="both">Both (AND)</button>
+            <h4 style="margin-top:18px">Final level thresholds</h4>
+            <div class="indep-row" style="grid-template-columns:90px 1fr 64px">
+              <span class="indep-lab">Medium</span>
+              <input id="score-med" type="range" min="1" max="99" step="1" value="35" />
+              <input id="score-med-num" class="indep-num" type="number" min="1" max="99" value="35" />
+            </div>
+            <div class="indep-row" style="grid-template-columns:90px 1fr 64px">
+              <span class="indep-lab">High</span>
+              <input id="score-high" type="range" min="1" max="99" step="1" value="60" />
+              <input id="score-high-num" class="indep-num" type="number" min="1" max="99" value="60" />
+            </div>
+            <div class="indep-row" style="grid-template-columns:90px 1fr 64px">
+              <span class="indep-lab">Urgent</span>
+              <input id="score-urgent" type="range" min="1" max="99" step="1" value="80" />
+              <input id="score-urgent-num" class="indep-num" type="number" min="1" max="99" value="80" />
+            </div>
+          </aside>
+
+          <div class="heat-card" style="margin:0">
+            <h4 id="prio-heat-title" style="margin:0">Decision heatmap</h4>
+            <div class="heat-caption" id="prio-heat-cap" style="margin:4px 0 12px">Rows = business priority. Columns = amount. Each cell shows the weighted score and resulting level.</div>
+            <div id="prio-heatmap" style="overflow:auto"></div>
+            <div id="prio-level-cards" class="decision-cards"></div>
+            <div class="how-read" id="prio-how-read">
+              <b>Example:</b> raise Priority weight to see high-priority / low-amount cases move upward. Raise Amount weight to make larger amounts drive the result more strongly.
+            </div>
+            <div class="table-note" id="prio-status" style="margin-top:10px"></div>
           </div>
         </div>
 
-        <div class="indep-filters">
-          <div class="indep-card" id="prio-amount-card">
-            <h4>Amount <span class="indep-sub">(|Amount| $) — drag or type</span></h4>
-            <div class="indep-row">
-              <span class="indep-lab">Low starts</span>
-              <input id="amt-low" type="range" min="0" max="20000" step="10" value="0" />
-              <input id="amt-low-num" class="indep-num" type="number" min="0" step="10" value="0" aria-label="Low starts dollars" />
-            </div>
-            <div class="indep-row">
-              <span class="indep-lab">Medium starts</span>
-              <input id="amt-med" type="range" min="0" max="20000" step="10" value="100" />
-              <input id="amt-med-num" class="indep-num" type="number" min="0" step="10" value="100" aria-label="Medium starts dollars" />
-            </div>
-            <div class="indep-row">
-              <span class="indep-lab">High starts</span>
-              <input id="amt-high" type="range" min="0" max="20000" step="10" value="400" />
-              <input id="amt-high-num" class="indep-num" type="number" min="0" step="10" value="400" aria-label="High starts dollars" />
-            </div>
-            <div class="indep-row">
-              <span class="indep-lab">Urgent starts</span>
-              <input id="amt-urgent" type="range" min="0" max="20000" step="10" value="1500" />
-              <input id="amt-urgent-num" class="indep-num" type="number" min="0" step="10" value="1500" aria-label="Urgent starts dollars" />
-            </div>
-            <button type="button" class="action" id="prio-snap-amt" style="margin-top:10px">Snap Amount cuts to data</button>
+        <div class="heat-card" style="margin-top:18px">
+          <h4>Map your data into Amount / Days buckets</h4>
+          <div class="table-note" id="prio-days-note" style="margin-bottom:10px"></div>
+          <div class="filter-field" style="max-width:320px;margin-bottom:12px">
+            <label>Filter reason codes (optional)</label>
+            <div class="msel wide-panel" id="prio-reasons" data-msel data-all-label="All reason codes"></div>
           </div>
-
-          <div class="indep-card" id="prio-priority-card">
-            <h4>Days in arrears <span class="indep-sub">— drag or type</span></h4>
-            <div class="indep-row">
-              <span class="indep-lab">Low starts</span>
-              <input id="pri-low" type="range" min="0" max="365" step="1" value="0" />
-              <input id="pri-low-num" class="indep-num" type="number" min="0" step="1" value="0" aria-label="Low starts days" />
+          <div class="indep-filters">
+            <div class="indep-card" id="prio-amount-card">
+              <h4>Amount <span class="indep-sub">(|Amount| $)</span></h4>
+              <div class="indep-row">
+                <span class="indep-lab">Low starts</span>
+                <input id="amt-low" type="range" min="0" max="20000" step="10" value="0" />
+                <input id="amt-low-num" class="indep-num" type="number" min="0" step="10" value="0" />
+              </div>
+              <div class="indep-row">
+                <span class="indep-lab">Medium starts</span>
+                <input id="amt-med" type="range" min="0" max="20000" step="10" value="100" />
+                <input id="amt-med-num" class="indep-num" type="number" min="0" step="10" value="100" />
+              </div>
+              <div class="indep-row">
+                <span class="indep-lab">High starts</span>
+                <input id="amt-high" type="range" min="0" max="20000" step="10" value="400" />
+                <input id="amt-high-num" class="indep-num" type="number" min="0" step="10" value="400" />
+              </div>
+              <div class="indep-row">
+                <span class="indep-lab">Urgent starts</span>
+                <input id="amt-urgent" type="range" min="0" max="20000" step="10" value="1500" />
+                <input id="amt-urgent-num" class="indep-num" type="number" min="0" step="10" value="1500" />
+              </div>
+              <button type="button" class="action" id="prio-snap-amt" style="margin-top:10px">Snap Amount cuts to data</button>
             </div>
-            <div class="indep-row">
-              <span class="indep-lab">Medium starts</span>
-              <input id="pri-med" type="range" min="0" max="365" step="1" value="30" />
-              <input id="pri-med-num" class="indep-num" type="number" min="0" step="1" value="30" aria-label="Medium starts days" />
-            </div>
-            <div class="indep-row">
-              <span class="indep-lab">High starts</span>
-              <input id="pri-high" type="range" min="0" max="365" step="1" value="60" />
-              <input id="pri-high-num" class="indep-num" type="number" min="0" step="1" value="60" aria-label="High starts days" />
-            </div>
-            <div class="indep-row">
-              <span class="indep-lab">Urgent starts</span>
-              <input id="pri-urgent" type="range" min="0" max="365" step="1" value="90" />
-              <input id="pri-urgent-num" class="indep-num" type="number" min="0" step="1" value="90" aria-label="Urgent starts days" />
-            </div>
-            <button type="button" class="action" id="prio-snap-days" style="margin-top:10px">Snap Days cuts to data</button>
-          </div>
-        </div>
-
-        <div class="heat-card" style="margin-top:16px">
-          <div class="filter-heat-head">
-            <div>
-              <h4 id="prio-heat-title" style="margin:0">Priority heatmap</h4>
-              <div class="heat-caption" id="prio-heat-cap" style="margin:4px 0 0">Each cell shows the total sum of |Amount| in that bucket.</div>
-            </div>
-            <div class="min-level-wrap">
-              <label for="prio-min-level">Minimum level</label>
-              <select id="prio-min-level">
-                <option value="0" selected>Low+</option>
-                <option value="1">Medium+</option>
-                <option value="2">High+</option>
-                <option value="3">Urgent</option>
-              </select>
+            <div class="indep-card" id="prio-priority-card">
+              <h4>Days in arrears <span class="indep-sub">(business priority)</span></h4>
+              <div class="indep-row">
+                <span class="indep-lab">Low starts</span>
+                <input id="pri-low" type="range" min="0" max="365" step="1" value="0" />
+                <input id="pri-low-num" class="indep-num" type="number" min="0" step="1" value="0" />
+              </div>
+              <div class="indep-row">
+                <span class="indep-lab">Medium starts</span>
+                <input id="pri-med" type="range" min="0" max="365" step="1" value="30" />
+                <input id="pri-med-num" class="indep-num" type="number" min="0" step="1" value="30" />
+              </div>
+              <div class="indep-row">
+                <span class="indep-lab">High starts</span>
+                <input id="pri-high" type="range" min="0" max="365" step="1" value="60" />
+                <input id="pri-high-num" class="indep-num" type="number" min="0" step="1" value="60" />
+              </div>
+              <div class="indep-row">
+                <span class="indep-lab">Urgent starts</span>
+                <input id="pri-urgent" type="range" min="0" max="365" step="1" value="90" />
+                <input id="pri-urgent-num" class="indep-num" type="number" min="0" step="1" value="90" />
+              </div>
+              <button type="button" class="action" id="prio-snap-days" style="margin-top:10px">Snap Days cuts to data</button>
             </div>
           </div>
-          <div id="prio-heatmap" style="overflow:auto"></div>
-          <div id="prio-level-cards" class="level-summary"></div>
-          <div class="table-note" id="prio-status" style="margin-top:10px"></div>
-        </div>
-
-        <div class="heat-card" style="margin-top:14px">
-          <h4>Included lines — detail</h4>
+          <h4 style="margin-top:16px">Lines by decision level</h4>
           <div style="overflow:auto">
             <table class="data" id="prio-bucket-table"></table>
           </div>
@@ -1960,9 +2082,21 @@
     }
 
     const priorityState = {
-      mode: "both", // amount | days | both
-      minLevel: 0,  // 0=Low+ … 3=Urgent
+      amountWeight: 50, // 0–100; Priority weight = 100 − amountWeight
     };
+
+    const DECISION_PRIORITY = [
+      { name: "Urgent", weight: 100 },
+      { name: "High", weight: 75 },
+      { name: "Medium", weight: 50 },
+      { name: "Low", weight: 25 },
+    ];
+    const DECISION_AMOUNT = [
+      { name: "Low", weight: 25 },
+      { name: "Medium", weight: 50 },
+      { name: "High", weight: 75 },
+      { name: "Urgent", weight: 100 },
+    ];
 
 
     const DB_NAME = "threshold-explorer";
@@ -3672,19 +3806,6 @@
       ];
     }
 
-    function cellIncluded(mode, amountTier, daysTier, minRank) {
-      if (mode === "amount") {
-        if (!amountTier) return false;
-        return tierRank(amountTier) >= minRank;
-      }
-      if (mode === "days") {
-        if (!daysTier) return false;
-        return tierRank(daysTier) >= minRank;
-      }
-      if (!amountTier || !daysTier) return false;
-      return tierRank(amountTier) >= minRank && tierRank(daysTier) >= minRank;
-    }
-
     function scaleIndepSliders(amtSorted, daySorted) {
       const p99 = amtSorted.length ? percentileValue(amtSorted, 99) : 5000;
       const amtMax = Math.max(2000, Math.ceil(p99 / 50) * 50);
@@ -3761,219 +3882,112 @@
     }
 
     function syncPriorityTabUi() {
-      const mode = priorityState.mode;
-      document.querySelectorAll("#view-priority [data-prio]").forEach((btn) => {
-        btn.classList.toggle("active", btn.getAttribute("data-prio") === mode);
-      });
-      $("prio-amount-card")?.classList.toggle("dimmed", mode === "days");
-      $("prio-priority-card")?.classList.toggle("dimmed", mode === "amount");
-
       const allRows = [...datasets.coop.rows, ...datasets.logistics.rows];
       const hasDays = datasetHasDays(allRows);
       const note = $("prio-days-note");
       if (!note) return;
-      if (!allRows.length) note.textContent = "Load COOP and/or Logistics first.";
-      else if (!hasDays && mode !== "amount") {
-        note.textContent = "Days in Arrears not found in saved data — re-drop the Excel file. Or switch to Amount only.";
+      if (!allRows.length) {
+        note.textContent = "Optional: load COOP / Logistics to score lines. The decision heatmap above works without data.";
+      } else if (!hasDays) {
+        note.textContent = "Days in Arrears missing — re-drop Excel so lines can map to Priority rows. Amount buckets still work for columns.";
       } else {
-        note.textContent = "Drag the bar or type a number in the box. Below Low starts is outside the four tiers.";
+        note.textContent = "Drag or type Low / Medium / High / Urgent starts to map lines into the heatmap axes.";
       }
     }
 
-    function renderLevelCards(amtCuts, priCuts, mode, totalsByTier) {
-      const cards = $("prio-level-cards");
-      if (!cards) return;
-      const aBands = absoluteBands(amtCuts, "$");
-      const dBands = absoluteBands(priCuts, "d");
-      cards.className = "level-summary";
-      cards.innerHTML = PRIORITY_LEVELS.map((name, i) => {
-        let range;
-        if (mode === "amount") range = `A ${aBands[i].label}`;
-        else if (mode === "days") range = `D ${dBands[i].label}`;
-        else range = `A ${aBands[i].label} · D ${dBands[i].label}`;
-        const tot = totalsByTier?.[name];
-        const sumLine = tot ? moneyExact(tot.dollars) : "—";
-        return `<div class="level-card" style="border-left:3px solid ${PRIORITY_COLORS[name]}">
-          <div class="lc-name" style="color:${PRIORITY_COLORS[name]}">${name}</div>
-          <div class="lc-range">${escapeHtml(range)}</div>
-          <div class="lc-sum">${sumLine}</div>
-        </div>`;
-      }).join("");
+    function blendedDecisionScore(priorityWeight, amountWeight, amtPct) {
+      const w = Math.max(0, Math.min(1, (Number(amtPct) || 0) / 100));
+      return priorityWeight * (1 - w) + amountWeight * w;
     }
 
-    function heatColorIntensity(t) {
-      const x = Math.max(0, Math.min(1, t));
-      const r = Math.round(255 * Math.min(1, x * 1.35));
-      const g = Math.round(230 * (1 - x) + 50 * x);
-      const b = Math.round(245 * (1 - x * 0.8));
-      return { bg: `rgb(${r},${g},${b})`, text: x > 0.55 ? "#fff" : "#1a1a2e" };
+    function levelFromDecisionScore(score, thr) {
+      // thr = [med, high, urgent]
+      if (score >= thr[2]) return "Urgent";
+      if (score >= thr[1]) return "High";
+      if (score >= thr[0]) return "Medium";
+      return "Low";
     }
 
-    function renderPriorityHeatmap(mode, scored, amtCuts, priCuts) {
+    function fmtDecisionScore(n) {
+      const x = Math.round(n * 10) / 10;
+      return Number.isInteger(x) ? x.toFixed(1) : x.toFixed(1);
+    }
+
+    function getDecisionWeights() {
+      let amt = Number($("w-amt")?.value);
+      let prio = Number($("w-prio")?.value);
+      if (!Number.isFinite(amt)) amt = 50;
+      if (!Number.isFinite(prio)) prio = 50;
+      // Keep linked: editing one updates the other to sum 100
+      return { amountWeight: amt, priorityWeight: prio };
+    }
+
+    function getScoreThresholds() {
+      return enforceAscendingAbsolute(["score-med", "score-high", "score-urgent"], 1);
+    }
+
+    function syncDecisionWeightUi(amt, prio) {
+      if ($("w-amt")) $("w-amt").value = String(amt);
+      if ($("w-prio")) $("w-prio").value = String(prio);
+      if ($("w-amt-val")) $("w-amt-val").textContent = String(Math.round(amt));
+      if ($("w-prio-val")) $("w-prio-val").textContent = String(Math.round(prio));
+      if ($("mix-amt")) $("mix-amt").textContent = `${Math.round(amt)}%`;
+      if ($("mix-prio")) $("mix-prio").textContent = `${Math.round(prio)}%`;
+    }
+
+    function syncScoreThresholdInputs(thr) {
+      ["score-med", "score-high", "score-urgent"].forEach((id, i) => {
+        const v = Math.round(thr[i]);
+        if ($(id)) $(id).value = String(v);
+        if ($(`${id}-num`)) $(`${id}-num`).value = String(v);
+      });
+    }
+
+    function renderDecisionHeatmap(amtWeight, scoreThr) {
       const el = $("prio-heatmap");
+      const cards = $("prio-level-cards");
       const title = $("prio-heat-title");
       const cap = $("prio-heat-cap");
-      const status = $("prio-status");
-      if (!el) return;
+      if (!el) return { counts: {}, totalCells: 16 };
 
-      const minRank = priorityState.minLevel;
-      const minLab = minLevelLabel(minRank);
-      const aBands = absoluteBands(amtCuts, "$");
-      const dBands = absoluteBands(priCuts, "d");
-
-      if (title) title.textContent = "Priority heatmap — total |Amount| by bucket";
+      if (title) title.textContent = "Decision heatmap";
       if (cap) {
-        if (mode === "amount") cap.textContent = "Amount only. Cell color = relative $ heat; value = sum of |Amount| in that tier.";
-        else if (mode === "days") cap.textContent = "Days only. Cell color = relative $ heat; value = sum of |Amount| in that tier.";
-        else cap.textContent = "Both (AND). Cell color = relative $ heat; value = sum of |Amount| for Amount × Days.";
+        cap.textContent = "Rows = business priority. Columns = amount. Each cell shows the weighted score and resulting level.";
       }
 
-      const grid = {};
-      for (const a of PRIORITY_LEVELS) {
-        grid[a] = Object.fromEntries(PRIORITY_LEVELS.map((d) => [d, { lines: 0, dollars: 0 }]));
-      }
-      for (const { amountTier: a, daysTier: d, row } of scored) {
-        if (!grid[a] || !grid[a][d]) continue;
-        grid[a][d].lines += 1;
-        grid[a][d].dollars += row.absAmount;
-      }
+      const counts = { Low: 0, Medium: 0, High: 0, Urgent: 0 };
+      const totalCells = DECISION_PRIORITY.length * DECISION_AMOUNT.length;
 
-      const totalsByTier = Object.fromEntries(PRIORITY_LEVELS.map((t) => [t, { lines: 0, dollars: 0 }]));
-      if (mode === "amount") {
-        for (const a of PRIORITY_LEVELS) {
-          for (const d of PRIORITY_LEVELS) {
-            totalsByTier[a].lines += grid[a][d].lines;
-            totalsByTier[a].dollars += grid[a][d].dollars;
-          }
-        }
-      } else if (mode === "days") {
-        for (const d of PRIORITY_LEVELS) {
-          for (const a of PRIORITY_LEVELS) {
-            totalsByTier[d].lines += grid[a][d].lines;
-            totalsByTier[d].dollars += grid[a][d].dollars;
-          }
-        }
-      } else {
-        for (const a of PRIORITY_LEVELS) {
-          for (const d of PRIORITY_LEVELS) {
-            totalsByTier[a].lines += grid[a][d].lines;
-            totalsByTier[a].dollars += grid[a][d].dollars;
-          }
-        }
-      }
-      renderLevelCards(amtCuts, priCuts, mode, totalsByTier);
-
-      if (mode === "amount" || mode === "days") {
-        const bands = mode === "amount" ? aBands : dBands;
-        let maxD = 1;
-        for (const tier of PRIORITY_LEVELS) maxD = Math.max(maxD, totalsByTier[tier].dollars);
-        let included = 0;
-        el.innerHTML = `<div class="prio-heat-1d">${PRIORITY_LEVELS.map((tier, i) => {
-          const ok = i >= minRank;
-          if (ok) included += 1;
-          const t = totalsByTier[tier];
-          const { bg, text } = heatColorIntensity(t.dollars / maxD);
-          return `<div class="prio-sum-cell ${ok ? "" : "prio-cell-ex"}" style="background:${bg};color:${text}">
-            <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;opacity:0.9">${tier}</div>
-            <div class="psum" style="color:inherit;margin-top:8px">${moneyExact(t.dollars)}</div>
-            <div class="plines" style="color:inherit">${t.lines.toLocaleString()} lines</div>
-            <div class="plines" style="color:inherit;opacity:0.75">${escapeHtml(bands[i].label)}</div>
-          </div>`;
-        }).join("")}</div>`;
-        if (status) {
-          status.textContent = `${mode === "amount" ? "Amount" : "Days"} only at ${minLab}: ${included}/4 tiers included · grand total ${moneyExact(scored.reduce((s, x) => s + x.row.absAmount, 0))}`;
-        }
-        return;
-      }
-
-      // Both — heat matrix of total $
-      let maxCell = 1;
-      for (const a of PRIORITY_LEVELS) {
-        for (const d of PRIORITY_LEVELS) maxCell = Math.max(maxCell, grid[a][d].dollars);
-      }
-
-      let includedCombos = 0;
-      let html = `<table class="filter-heat-table prio-sum-table"><thead><tr>
-        <th style="text-align:left;color:#888;font-weight:600">Days ↓ / Amount →</th>
-        ${PRIORITY_LEVELS.map((a, i) => `<th>${a}<span class="th-range">${escapeHtml(aBands[i].label)}</span></th>`).join("")}
-        <th>Row total</th>
+      let html = `<table class="filter-heat-table"><thead><tr>
+        <th style="text-align:left;color:#888;font-weight:600">Priority ↓ / Amount →</th>
+        ${DECISION_AMOUNT.map((a) => `<th>${a.name}<span class="th-range">(${a.weight})</span></th>`).join("")}
       </tr></thead><tbody>`;
-      for (const d of [...PRIORITY_LEVELS].reverse()) {
-        const di = tierRank(d);
-        let rowD = 0;
-        let rowL = 0;
-        html += `<tr><td class="row-lab" style="color:${PRIORITY_COLORS[d]}">${d}<span class="th-range">${escapeHtml(dBands[di].label)}</span></td>`;
-        for (const a of PRIORITY_LEVELS) {
-          const ok = cellIncluded("both", a, d, minRank);
-          if (ok) includedCombos += 1;
-          const c = grid[a][d];
-          rowD += c.dollars;
-          rowL += c.lines;
-          const { bg, text } = heatColorIntensity(c.dollars / maxCell);
-          html += `<td class="prio-sum-cell ${ok ? "" : "prio-cell-ex"}" style="background:${bg};color:${text};border-color:transparent">
-            <div class="psum" style="color:inherit">${c.lines ? moneyExact(c.dollars) : "—"}</div>
-            <div class="plines" style="color:inherit">${c.lines ? c.lines.toLocaleString() + " lines" : ""}</div>
+
+      for (const p of DECISION_PRIORITY) {
+        html += `<tr><td class="row-lab">${p.name}<span class="th-range">(${p.weight})</span></td>`;
+        for (const a of DECISION_AMOUNT) {
+          const score = blendedDecisionScore(p.weight, a.weight, amtWeight);
+          const level = levelFromDecisionScore(score, scoreThr);
+          counts[level] += 1;
+          html += `<td class="decision-cell lvl-${level}">
+            <div class="dc-score">${fmtDecisionScore(score)}</div>
+            <div class="dc-level">${level}</div>
           </td>`;
         }
-        const { bg: rbg, text: rtext } = heatColorIntensity(rowD / maxCell);
-        html += `<td class="prio-sum-cell" style="background:${rbg};color:${rtext};border-color:transparent">
-          <div class="psum" style="color:inherit">${moneyExact(rowD)}</div>
-          <div class="plines" style="color:inherit">${rowL.toLocaleString()} lines</div>
-        </td></tr>`;
+        html += `</tr>`;
       }
-      html += `<tr><td class="row-lab" style="color:#444">Col total</td>`;
-      let grand = 0;
-      let grandL = 0;
-      for (const a of PRIORITY_LEVELS) {
-        let colD = 0;
-        let colL = 0;
-        for (const d of PRIORITY_LEVELS) {
-          colD += grid[a][d].dollars;
-          colL += grid[a][d].lines;
-        }
-        grand += colD;
-        grandL += colL;
-        const { bg, text } = heatColorIntensity(colD / maxCell);
-        html += `<td class="prio-sum-cell" style="background:${bg};color:${text};border-color:transparent">
-          <div class="psum" style="color:inherit">${moneyExact(colD)}</div>
-          <div class="plines" style="color:inherit">${colL.toLocaleString()} lines</div>
-        </td>`;
-      }
-      const { bg: gbg, text: gtext } = heatColorIntensity(1);
-      html += `<td class="prio-sum-cell" style="background:${gbg};color:${gtext};border-color:transparent">
-        <div class="psum" style="color:inherit">${moneyExact(grand)}</div>
-        <div class="plines" style="color:inherit">${grandL.toLocaleString()} lines</div>
-      </td></tr>`;
       html += `</tbody></table>`;
       el.innerHTML = html;
-      if (status) {
-        status.textContent = `Both (AND) at ${minLab}: ${includedCombos}/16 buckets in scope · grand total ${moneyExact(grand)}`;
-      }
-    }
 
-    function snapCutsToSorted(sorted, ids, kind) {
-      if (!sorted.length || ids.length < 4) return;
-      const [lowId, medId, highId, urgId] = ids;
-      let low = Math.round(percentileValue(sorted, 5));
-      let med = Math.round(percentileValue(sorted, 35));
-      let high = Math.round(percentileValue(sorted, 60));
-      let urg = Math.round(percentileValue(sorted, 80));
-      const step = kind === "$" ? 10 : 1;
-      if (med <= low) med = low + step;
-      if (high <= med) high = med + step;
-      if (urg <= high) urg = high + step;
-      const maxEl = $(urgId);
-      const max = maxEl ? Number(maxEl.max) : urg;
-      if (urg > max) {
-        urg = max;
-        if (high >= urg) high = Math.max(0, urg - step);
-        if (med >= high) med = Math.max(0, high - step);
-        if (low >= med) low = Math.max(0, med - step);
+      if (cards) {
+        cards.className = "decision-cards";
+        cards.innerHTML = PRIORITY_LEVELS.map((lvl) => `
+          <div class="decision-card lvl-${lvl}">
+            <div class="dc-name">${lvl}</div>
+            <div class="dc-count">${counts[lvl]}/${totalCells}</div>
+          </div>`).join("");
       }
-      if ($(lowId)) $(lowId).value = String(Math.max(0, low));
-      if ($(medId)) $(medId).value = String(med);
-      if ($(highId)) $(highId).value = String(high);
-      if ($(urgId)) $(urgId).value = String(urg);
+      return { counts, totalCells };
     }
 
     function refreshPriority() {
@@ -3984,184 +3998,87 @@
       populatePriorityReasons();
       syncPriorityTabUi();
 
-      let mode = priorityState.mode;
+      // --- Decision matrix (always) ---
+      let { amountWeight, priorityWeight } = getDecisionWeights();
+      // Prefer amount slider as source of truth when they diverge
+      amountWeight = Math.max(0, Math.min(100, amountWeight));
+      priorityWeight = 100 - amountWeight;
+      syncDecisionWeightUi(amountWeight, priorityWeight);
+      priorityState.amountWeight = amountWeight;
+
+      const scoreThr = getScoreThresholds();
+      syncScoreThresholdInputs(scoreThr);
+      const matrix = renderDecisionHeatmap(amountWeight, scoreThr);
+
+      // --- Optional: score loaded lines ---
       const rows = prioritySourceRows();
-
-      if ($("prio-min-level")) $("prio-min-level").value = String(priorityState.minLevel);
-
-      if (!rows.length) {
-        const hasRaw = datasets.coop.rows.length + datasets.logistics.rows.length;
-        if (!hasRaw) {
-          $("prio-heatmap").innerHTML = `<div class="prio-empty">
-            <b>No data loaded yet.</b><br/>
-            Open the <b>COOP</b> or <b>Logistics</b> tab, drop your Excel file, then come back here — the heat table will appear.
-          </div>`;
-        } else {
-          $("prio-heatmap").innerHTML = `<div class="prio-empty">
-            <b>No lines match the current Priority reason filter.</b><br/>
-            Clear reason codes (leave empty = all), or widen COOP/Logistics filters, then refresh this tab.
-          </div>`;
-        }
-        if ($("prio-level-cards")) $("prio-level-cards").innerHTML = "";
-        if (table) table.innerHTML = "";
-        if (status) status.textContent = hasRaw
-          ? `${hasRaw.toLocaleString()} lines loaded, but 0 after Priority reason filter.`
-          : "";
-        return;
-      }
-
       const amtSorted = rows.map((r) => r.absAmount).filter(Number.isFinite).sort((a, b) => a - b);
-      let daySorted = rows.map((r) => r.daysInArrears).filter((d) => d != null && Number.isFinite(d)).sort((a, b) => a - b);
+      const daySorted = rows.map((r) => r.daysInArrears).filter((d) => d != null && Number.isFinite(d)).sort((a, b) => a - b);
       scaleIndepSliders(amtSorted, daySorted);
-
-      let daysFallbackNote = "";
-      // Always show a heat table: if Days missing, render Amount-only heat (keep mode chip as-is)
-      let effectiveMode = mode;
-      if (mode !== "amount" && !daySorted.length) {
-        effectiveMode = "amount";
-        daysFallbackNote = "No Days values found — showing Amount-only heat. Re-drop Excel (or Forget saved data) to enable Both / Days.";
-      }
-
-      let amtCuts = getAmountCuts();
-      let priCuts = getPriorityCuts();
-
-      function scoreRows(m, aCuts, pCuts) {
-        const scored = [];
-        let skippedNoDays = 0;
-        let belowLowDollars = 0;
-        let belowLowLines = 0;
-        for (const row of rows) {
-          const amountTier = tierFromCuts(row.absAmount, aCuts);
-          let daysTier = null;
-          if (row.daysInArrears != null && Number.isFinite(row.daysInArrears)) {
-            daysTier = tierFromCuts(row.daysInArrears, pCuts);
-          } else if (m === "amount") {
-            daysTier = "Low";
-          } else {
-            skippedNoDays += 1;
-            continue;
-          }
-
-          if (m === "amount" && !amountTier) {
-            belowLowDollars += row.absAmount;
-            belowLowLines += 1;
-            continue;
-          }
-          if (m === "days" && !daysTier) {
-            belowLowDollars += row.absAmount;
-            belowLowLines += 1;
-            continue;
-          }
-          if (m === "both" && (!amountTier || !daysTier)) {
-            belowLowDollars += row.absAmount;
-            belowLowLines += 1;
-            continue;
-          }
-          scored.push({ row, amountTier, daysTier });
-        }
-        return { scored, skippedNoDays, belowLowDollars, belowLowLines };
-      }
-
-      let { scored, skippedNoDays, belowLowDollars, belowLowLines } = scoreRows(effectiveMode, amtCuts, priCuts);
-
-      // If bands are empty because cuts are outside the data, snap once and retry
-      if (!scored.length) {
-        if (amtSorted.length) snapCutsToSorted(amtSorted, ["amt-low", "amt-med", "amt-high", "amt-urgent"], "$");
-        if (daySorted.length) snapCutsToSorted(daySorted, ["pri-low", "pri-med", "pri-high", "pri-urgent"], "d");
-        amtCuts = getAmountCuts();
-        priCuts = getPriorityCuts();
-        ({ scored, skippedNoDays, belowLowDollars, belowLowLines } = scoreRows(effectiveMode, amtCuts, priCuts));
-        if (scored.length) {
-          daysFallbackNote = (daysFallbackNote ? daysFallbackNote + " " : "") + "Cuts were outside the data — snapped to data percentiles so the heat table can fill.";
-        }
-      }
-
+      const amtCuts = getAmountCuts();
+      const priCuts = getPriorityCuts();
       syncIndepSliderLabels(amtCuts, priCuts);
 
-      if (!scored.length) {
-        $("prio-heatmap").innerHTML = `<div class="prio-empty">Still no rows in Low–Urgent bands. Click <b>Snap Amount cuts to data</b> / <b>Snap Days cuts to data</b>, or set Low starts to 0.</div>`;
-        if (table) table.innerHTML = "";
-        if (status) status.textContent = daysFallbackNote || "";
+      if (!rows.length) {
+        if (table) {
+          table.innerHTML = `<tbody><tr><td style="text-align:left;color:#888">Load COOP / Logistics Excel to score lines into these decision levels. The heatmap above works without data.</td></tr></tbody>`;
+        }
+        if (status) {
+          status.textContent = `Matrix ${matrix.counts.Low}/${matrix.counts.Medium}/${matrix.counts.High}/${matrix.counts.Urgent} (L/M/H/U of ${matrix.totalCells}) · Amount weight ${Math.round(amountWeight)}%`;
+        }
         return;
       }
 
-      renderPriorityHeatmap(effectiveMode, scored, amtCuts, priCuts);
+      const weightByNameP = Object.fromEntries(DECISION_PRIORITY.map((x) => [x.name, x.weight]));
+      const weightByNameA = Object.fromEntries(DECISION_AMOUNT.map((x) => [x.name, x.weight]));
 
-      // Banner when we fell back from Both → Amount heat
-      if (daysFallbackNote && $("prio-heat-cap")) {
-        $("prio-heat-cap").textContent = daysFallbackNote;
+      const scored = [];
+      let skipped = 0;
+      for (const row of rows) {
+        const amountTier = tierFromCuts(row.absAmount, amtCuts);
+        let daysTier = null;
+        if (row.daysInArrears != null && Number.isFinite(row.daysInArrears)) {
+          daysTier = tierFromCuts(row.daysInArrears, priCuts);
+        } else {
+          skipped += 1;
+          continue;
+        }
+        if (!amountTier || !daysTier) continue;
+        const score = blendedDecisionScore(weightByNameP[daysTier], weightByNameA[amountTier], amountWeight);
+        const level = levelFromDecisionScore(score, scoreThr);
+        scored.push({ row, amountTier, daysTier, score, level });
       }
 
-      const minRank = priorityState.minLevel;
-      const included = scored.filter((x) => cellIncluded(effectiveMode, x.amountTier, x.daysTier, minRank));
-      const allD = scored.reduce((s, x) => s + x.row.absAmount, 0) || 1;
-      const incD = included.reduce((s, x) => s + x.row.absAmount, 0);
-
-      const daysUsed = new Set(scored.map((x) => x.daysTier));
-      const amtUsed = new Set(scored.map((x) => x.amountTier));
-
       if (table) {
-        if (effectiveMode === "both") {
-          let html = `<thead><tr><th>Amount</th><th>Days</th><th>Total |Amount|</th><th>Lines</th><th>$ % of all</th></tr></thead><tbody>`;
-          for (const a of PRIORITY_LEVELS) {
-            for (const d of PRIORITY_LEVELS) {
-              if (!cellIncluded("both", a, d, minRank)) continue;
-              const subset = scored.filter((x) => x.amountTier === a && x.daysTier === d);
-              if (!subset.length) continue;
-              const dollars = subset.reduce((s, x) => s + x.row.absAmount, 0);
-              html += `<tr>
-                <td style="color:${PRIORITY_COLORS[a]};font-weight:700">${a}</td>
-                <td style="color:${PRIORITY_COLORS[d]};font-weight:700">${d}</td>
-                <td class="prio-sum-cell">${moneyExact(dollars)}</td>
-                <td>${subset.length.toLocaleString()}</td>
-                <td>${pct(dollars, allD)}</td>
-              </tr>`;
-            }
-          }
-          html += `</tbody>`;
-          table.innerHTML = html;
-        } else {
-          const key = effectiveMode === "amount" ? "amountTier" : "daysTier";
-          const cuts = effectiveMode === "amount" ? amtCuts : priCuts;
-          const bands = absoluteBands(cuts, effectiveMode === "amount" ? "$" : "d");
-          let html = `<thead><tr><th>Tier</th><th>Criteria</th><th>Total |Amount|</th><th>Lines</th><th>$ % of all</th></tr></thead><tbody>`;
-          PRIORITY_LEVELS.forEach((tier, i) => {
-            if (i < minRank) return;
-            const subset = scored.filter((x) => x[key] === tier);
-            const dollars = subset.reduce((s, x) => s + x.row.absAmount, 0);
-            html += `<tr>
-              <td style="color:${PRIORITY_COLORS[tier]};font-weight:700">${tier}</td>
-              <td style="text-align:left">${escapeHtml(bands[i].label)}</td>
-              <td class="prio-sum-cell">${moneyExact(dollars)}</td>
-              <td>${subset.length.toLocaleString()}</td>
-              <td>${pct(dollars, allD)}</td>
-            </tr>`;
-          });
-          html += `</tbody>`;
-          table.innerHTML = html;
+        const allD = scored.reduce((s, x) => s + x.row.absAmount, 0) || 1;
+        let html = `<thead><tr><th>Level</th><th>Lines</th><th>Total |Amount|</th><th>$ %</th><th>Avg score</th></tr></thead><tbody>`;
+        for (const lvl of [...PRIORITY_LEVELS].reverse()) {
+          const subset = scored.filter((x) => x.level === lvl);
+          const dollars = subset.reduce((s, x) => s + x.row.absAmount, 0);
+          const avg = subset.length ? subset.reduce((s, x) => s + x.score, 0) / subset.length : 0;
+          html += `<tr>
+            <td style="font-weight:700">${lvl}</td>
+            <td>${subset.length.toLocaleString()}</td>
+            <td>${moneyExact(dollars)}</td>
+            <td>${pct(dollars, allD)}</td>
+            <td>${subset.length ? fmtDecisionScore(avg) : "—"}</td>
+          </tr>`;
         }
+        html += `</tbody>`;
+        table.innerHTML = html;
       }
 
       if (status) {
-        const base = status.textContent || "";
-        const extra = [];
-        extra.push(`${included.length.toLocaleString()} included lines`);
-        extra.push(`${moneyExact(incD)} included $`);
+        const bits = [
+          `Matrix ${matrix.counts.Low}/${matrix.counts.Medium}/${matrix.counts.High}/${matrix.counts.Urgent} (L/M/H/U of ${matrix.totalCells})`,
+          `Amount weight ${Math.round(amountWeight)}%`,
+          `${scored.length.toLocaleString()} lines scored`,
+        ];
         if (daySorted.length) {
-          extra.push(`Days on ${daySorted.length.toLocaleString()} lines (min ${Math.round(daySorted[0])}d · med ${Math.round(percentileValue(daySorted, 50))}d · max ${Math.round(daySorted[daySorted.length - 1])}d)`);
+          bits.push(`Days on ${daySorted.length.toLocaleString()} lines`);
         }
-        if (effectiveMode === "both" && daysUsed.size < 2) {
-          extra.push(`Only Days=${[...daysUsed].join("/")} populated — click Snap Days cuts to data`);
-        }
-        if (amtUsed.size < 2) {
-          extra.push(`Only Amount=${[...amtUsed].join("/")} populated — try Snap Amount cuts to data`);
-        }
-        if (belowLowLines) {
-          extra.push(`${belowLowLines.toLocaleString()} below Low starts (${moneyExact(belowLowDollars)})`);
-        }
-        if (skippedNoDays) extra.push(`${skippedNoDays.toLocaleString()} skipped (no days)`);
-        if (daysFallbackNote) extra.push(daysFallbackNote);
-        status.textContent = `${base} · ${extra.join(" · ")}`;
+        if (skipped) bits.push(`${skipped.toLocaleString()} skipped (no days)`);
+        status.textContent = bits.join(" · ");
       }
     }
 
@@ -4406,12 +4323,35 @@
     }
 
     function wirePriorityTab() {
-      document.addEventListener("click", (e) => {
-        const btn = e.target.closest("[data-prio]");
-        if (!btn || !btn.closest("#view-priority")) return;
-        e.preventDefault();
-        priorityState.mode = btn.getAttribute("data-prio");
+      const linkWeights = (source) => {
+        if (source === "amt") {
+          const amt = Math.max(0, Math.min(100, Number($("w-amt").value) || 0));
+          syncDecisionWeightUi(amt, 100 - amt);
+        } else {
+          const prio = Math.max(0, Math.min(100, Number($("w-prio").value) || 0));
+          syncDecisionWeightUi(100 - prio, prio);
+        }
         refreshPriority();
+      };
+      $("w-amt")?.addEventListener("input", () => linkWeights("amt"));
+      $("w-prio")?.addEventListener("input", () => linkWeights("prio"));
+      $("w-reset")?.addEventListener("click", () => {
+        syncDecisionWeightUi(50, 50);
+        refreshPriority();
+      });
+
+      ["score-med", "score-high", "score-urgent"].forEach((id) => {
+        $(id)?.addEventListener("input", () => {
+          const num = $(`${id}-num`);
+          if (num) num.value = String(Math.round(Number($(id).value) || 0));
+          refreshPriority();
+        });
+        $(`${id}-num`)?.addEventListener("change", () => {
+          const v = Math.max(1, Math.min(99, Math.round(Number($(`${id}-num`).value) || 0)));
+          $(`${id}-num`).value = String(v);
+          if ($(id)) $(id).value = String(v);
+          refreshPriority();
+        });
       });
 
       const cutIds = [
@@ -4430,32 +4370,19 @@
           num.value = String(v);
           if (range) {
             if (v > Number(range.max)) range.max = String(id.startsWith("amt") ? Math.ceil(v / 50) * 50 : v);
-            range.value = String(Math.min(v, Number(range.max)));
-            // If typed above max we raised max; keep typed value
-            if (v > Number(range.max)) range.max = String(v);
             range.value = String(v);
           }
           refreshPriority();
         });
         num?.addEventListener("keydown", (e) => {
-          if (e.key === "Enter") {
-            e.preventDefault();
-            num.blur();
-          }
+          if (e.key === "Enter") { e.preventDefault(); num.blur(); }
         });
       });
 
-      $("prio-min-level")?.addEventListener("change", () => {
-        priorityState.minLevel = Number($("prio-min-level").value) || 0;
-        refreshPriority();
-      });
       $("prio-snap-amt")?.addEventListener("click", () => {
         const rows = prioritySourceRows();
         const amtSorted = rows.map((r) => r.absAmount).filter(Number.isFinite).sort((a, b) => a - b);
-        if (!amtSorted.length) {
-          alert("Load COOP or Logistics data first.");
-          return;
-        }
+        if (!amtSorted.length) { alert("Load COOP or Logistics data first."); return; }
         scaleIndepSliders(amtSorted, []);
         snapCutsToSorted(amtSorted, ["amt-low", "amt-med", "amt-high", "amt-urgent"], "$");
         refreshPriority();
@@ -4463,17 +4390,13 @@
       $("prio-snap-days")?.addEventListener("click", () => {
         const rows = prioritySourceRows();
         const daySorted = rows.map((r) => r.daysInArrears).filter((d) => d != null && Number.isFinite(d)).sort((a, b) => a - b);
-        if (!daySorted.length) {
-          alert("No Days in arrears on the current rows. Re-drop the Excel file first.");
-          return;
-        }
+        if (!daySorted.length) { alert("No Days in arrears on the current rows. Re-drop the Excel file first."); return; }
         const amtSorted = rows.map((r) => r.absAmount).filter(Number.isFinite).sort((a, b) => a - b);
         scaleIndepSliders(amtSorted, daySorted);
         snapCutsToSorted(daySorted, ["pri-low", "pri-med", "pri-high", "pri-urgent"], "d");
         refreshPriority();
       });
 
-      // Reason filter changes should rebuild the heat table
       document.addEventListener("change", (e) => {
         if (e.target?.closest?.("#prio-reasons")) refreshPriority();
       });
