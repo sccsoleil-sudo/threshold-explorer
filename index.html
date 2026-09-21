@@ -1524,8 +1524,14 @@
 
     .locked-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+      grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 14px;
+    }
+    @media (max-width: 1000px) {
+      .locked-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (max-width: 640px) {
+      .locked-grid { grid-template-columns: 1fr; }
     }
     .locked-card {
       border: 1px solid #eee;
@@ -3323,8 +3329,9 @@
     .locked-card h3 { margin: 0 0 4px; font-size: 14px; color: #2649B2; }
     .locked-card .thr { font-size: 18px; font-weight: 700; margin: 4px 0; }
     .locked-card .meta { font-size: 12px; color: #666; margin-bottom: 8px; }
-    .locked-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-    @media (max-width: 800px) { .locked-grid { grid-template-columns: 1fr; } }
+    .locked-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+    @media (max-width: 1000px) { .locked-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    @media (max-width: 640px) { .locked-grid { grid-template-columns: 1fr; } }
     .coverage-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
     @media (max-width: 900px) { .coverage-grid { grid-template-columns: 1fr; } }
     .charts { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 8px; }
