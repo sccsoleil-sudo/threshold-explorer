@@ -1664,6 +1664,8 @@
         </label>
         <button type="button" class="pdf-btn" id="btn-pdf-page" title="Download a PDF of the current tab">Download PDF</button>
         <button type="button" class="pdf-btn pdf-btn-secondary" id="btn-pdf-both" title="Download COOP and Logistics Claims together as one PDF">Download COOP + Logistics</button>
+        <button type="button" class="pdf-btn pdf-btn-secondary" id="btn-html-page" title="Download searchable HTML of the current tab (tables as text)">Download HTML</button>
+        <button type="button" class="pdf-btn pdf-btn-secondary" id="btn-html-both" title="Download searchable HTML for COOP + Logistics together">HTML COOP + Logistics</button>
       </div>
     </div>
     <div class="tabs">
@@ -1952,7 +1954,7 @@
           </div>
         </div>
 
-        <div class="panel">
+        <div class="panel" data-pdf-skip="reason-charts">
           <div class="section-title">Live charts — by Reason Code</div>
           <div class="charts" id="charts-logistics"></div>
           <div class="footnote">Bar width scaled to sqrt(value); labels show Threshold ÷ Total %. Accent color matches Logistics one-pager (#C98A2C).</div>
@@ -2551,10 +2553,18 @@
         if (blocks.length) return blocks;
       }
 
+      // KPI summary strip (Amount band / Lines / $$ / Filter) — same as on-screen cards
+      view.querySelectorAll(".kpis").forEach((el) => {
+        const parentApp = el.closest("[id^='app-']");
+        if (parentApp && parentApp.classList.contains("hidden")) return;
+        add(el, "whole");
+      });
+
       view.querySelectorAll(".panel").forEach((panel) => {
         if (!includeUpload && panel.classList.contains("upload-panel")) return;
         if (!includeControls && panel.classList.contains("controls-panel")) return;
         if (panel.classList.contains("priority-panel")) return;
+        if (panel.hasAttribute("data-pdf-skip")) return;
         if (panel.classList.contains("hidden")) return;
         const parentApp = panel.closest("[id^='app-']");
         if (parentApp && parentApp.classList.contains("hidden")) return;
@@ -2567,19 +2577,19 @@
       return blocks;
     }
 
-    /** Division + filters for PDF / PNG headers (matches on-screen filter state). */
+    /** Division + filters for PDF / PNG headers — matches Amount band + Filter KPI cards. */
     function currentExportContext(tabKey) {
       const tab = tabKey || activeTabKey();
       if (tab === "priority") {
         return {
           division: "—",
-          divisionLine: "Division: —",
-          detailLine: "Priority / Urgency explorer",
+          divisionLine: "Amount band: —",
+          detailLine: "Filter: Priority / Urgency explorer",
         };
       }
       const ds = datasets[tab];
       if (!ds) {
-        return { division: "—", divisionLine: "Division: —", detailLine: "" };
+        return { division: "—", divisionLine: "Amount band: —", detailLine: "Filter: —" };
       }
       const years = selectedValues(`year-${ds.id}`);
       const months = selectedValues(`month-${ds.id}`);
@@ -2592,18 +2602,13 @@
         "All months",
         (m) => MONTH_NAMES[Number(m) - 1] || m
       );
-      let band = "";
-      if (rule.mode === "between") {
-        band = `Between $${Number(rule.min).toLocaleString()} – $${Number(rule.max).toLocaleString()}`;
-      } else {
-        band = `≤ $${Number(rule.max).toLocaleString()}`;
-      }
-      const bits = [band, year, month];
-      if (ds.excludeNegatives) bits.push("no negatives");
+      const bandLabel = formatAmountRule(rule);
+      let filterSub = `${month} · ${division}`;
+      if (ds.excludeNegatives) filterSub += " · no negatives";
       return {
         division,
-        divisionLine: `Division: ${division}`,
-        detailLine: bits.join(" · "),
+        divisionLine: `Amount band: ${bandLabel}`,
+        detailLine: `Filter: ${year} · ${filterSub}`,
       };
     }
 
@@ -2693,45 +2698,72 @@
       return canvas.toDataURL("image/jpeg", quality ?? 0.92);
     }
 
-    /** Draw a captured canvas onto the PDF as one uncut block (scale down to fit page if needed). */
-    function addWholeImage(pdf, state, canvas, preferNewPage) {
-      const { marginX, marginTop, marginBottom, usableWidth, usableHeight, pageWidth, pageHeight, title, ctx } = state;
-      let imgW = usableWidth;
-      let imgH = (canvas.height * imgW) / canvas.width;
+    /** Scale image to fully fit inside maxW×maxH (contain) — no cropping. */
+    function fitContain(srcW, srcH, maxW, maxH) {
+      const s = Math.min(maxW / Math.max(srcW, 1), maxH / Math.max(srcH, 1));
+      return { w: srcW * s, h: srcH * s, scale: s };
+    }
 
-      // Keep block whole — scale to fit a single page if taller than the page
-      if (imgH > usableHeight) {
-        const s = usableHeight / imgH;
-        imgW *= s;
-        imgH *= s;
-      }
-
+    function ensurePdfPage(pdf, state, forceNew) {
+      const { marginX, marginTop, pageWidth, title, ctx } = state;
       if (state.pageIndex === 0) {
         state.pageIndex = 1;
         writePdfPageHeader(pdf, title, state.pageIndex, pageWidth, marginX, ctx);
         state.y = marginTop;
-      } else if (preferNewPage || state.y + imgH > pageHeight - marginBottom) {
+        return;
+      }
+      if (forceNew) {
         pdf.addPage();
         state.pageIndex += 1;
         writePdfPageHeader(pdf, title, state.pageIndex, pageWidth, marginX, ctx);
         state.y = marginTop;
       }
-
-      pdf.addImage(canvasToJpeg(canvas), "JPEG", marginX, state.y, imgW, imgH);
-      state.y += imgH + 14;
     }
 
-    /** Paginate a tall table panel using row boundaries inside that panel only. */
+    /**
+     * Place one capture fully visible on the page.
+     * Size does not need to match the UI 1:1 — scale to fit width + height.
+     */
+    function addWholeImage(pdf, state, canvas, preferNewPage) {
+      const { marginX, marginTop, marginBottom, usableWidth, pageWidth, pageHeight } = state;
+      const availH = pageHeight - marginTop - marginBottom;
+      const fitted = fitContain(canvas.width, canvas.height, usableWidth, availH);
+
+      const needsOwnPage =
+        preferNewPage ||
+        fitted.h > availH * 0.5 ||
+        (state.pageIndex > 0 && state.y + fitted.h > pageHeight - marginBottom);
+
+      if (state.pageIndex === 0) {
+        ensurePdfPage(pdf, state, false);
+      } else if (needsOwnPage) {
+        ensurePdfPage(pdf, state, true);
+      }
+
+      const remainH = pageHeight - state.y - marginBottom;
+      let fit = fitContain(canvas.width, canvas.height, usableWidth, Math.max(40, remainH));
+      if (fit.h > remainH + 1) {
+        ensurePdfPage(pdf, state, true);
+        fit = fitContain(canvas.width, canvas.height, usableWidth, availH);
+      }
+
+      const x = marginX + (usableWidth - fit.w) / 2;
+      pdf.addImage(canvasToJpeg(canvas), "JPEG", x, state.y, fit.w, fit.h);
+      state.y += fit.h + 14;
+    }
+
+    /** Paginate a tall table; each slice is scaled to fully fit the page. */
     function addTableImagePaginated(pdf, state, el, canvas) {
-      const { marginX, marginTop, marginBottom, usableWidth, usableHeight, pageWidth, pageHeight, title, ctx } = state;
+      const { marginX, marginTop, marginBottom, usableWidth, pageHeight } = state;
+      const availH = pageHeight - marginTop - marginBottom;
+      const widthScale = usableWidth / canvas.width;
+      const pageSlicePx = Math.max(1, Math.floor(availH / widthScale));
       const pxScale = canvas.width / Math.max(el.offsetWidth, 1);
-      const pageSlicePx = Math.max(1, Math.floor((usableHeight * canvas.width) / usableWidth));
 
       const cuts = [0];
       const rows = [...el.querySelectorAll("table tr")].filter((r) => r.offsetHeight > 1);
       rows.forEach((row, i) => {
         const isHead = row.parentElement?.tagName === "THEAD" || !!row.querySelector("th");
-        // First allowed cut is after header + first body row
         if (i === 0 && isHead) return;
         if (i === 1) {
           const y = (offsetTopRelative(row, el) + row.offsetHeight) * pxScale;
@@ -2749,7 +2781,6 @@
       while (y < canvas.height - 1) {
         const ideal = Math.min(y + pageSlicePx, canvas.height);
         let end = ideal;
-        // Pick last cut <= ideal that leaves at least a little content; never cut before first body if still at top
         for (const c of uniq) {
           if (c > y + 24 && c <= ideal) end = c;
         }
@@ -2764,22 +2795,11 @@
         sctx.fillRect(0, 0, slice.width, slice.height);
         sctx.drawImage(canvas, 0, y, canvas.width, sliceH, 0, 0, canvas.width, sliceH);
 
-        const imgW = usableWidth;
-        const imgH = (sliceH * imgW) / canvas.width;
-
-        if (state.pageIndex === 0) {
-          state.pageIndex = 1;
-          writePdfPageHeader(pdf, title, state.pageIndex, pageWidth, marginX, ctx);
-          state.y = marginTop;
-        } else if (state.y + imgH > pageHeight - marginBottom) {
-          pdf.addPage();
-          state.pageIndex += 1;
-          writePdfPageHeader(pdf, title, state.pageIndex, pageWidth, marginX, ctx);
-          state.y = marginTop;
-        }
-
-        pdf.addImage(canvasToJpeg(slice), "JPEG", marginX, state.y, imgW, imgH);
-        state.y += imgH + 10;
+        ensurePdfPage(pdf, state, state.pageIndex > 0 || y > 0);
+        const fit = fitContain(slice.width, slice.height, usableWidth, availH);
+        const x = marginX + (usableWidth - fit.w) / 2;
+        pdf.addImage(canvasToJpeg(slice), "JPEG", x, state.y, fit.w, fit.h);
+        state.y += fit.h + 10;
         y = end;
         if (state.pageIndex > 80) break;
       }
@@ -2793,12 +2813,13 @@
 
     function createPdfState(title, exportCtx) {
       const JsPDF = window.jspdf.jsPDF;
-      const pdf = new JsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
+      // Letter gives a bit more vertical room; content is scaled to fit either way
+      const pdf = new JsPDF({ orientation: "portrait", unit: "pt", format: "letter" });
       const pageWidth = pdf.internal.pageSize.getWidth();
       const pageHeight = pdf.internal.pageSize.getHeight();
-      const marginX = 28;
-      const marginTop = 62;
-      const marginBottom = 36;
+      const marginX = 24;
+      const marginTop = 58;
+      const marginBottom = 28;
       return {
         pdf,
         state: {
@@ -2818,11 +2839,9 @@
     }
 
     async function appendBlocksToPdf(pdf, state, blocks, title, exportCtx, onProgress) {
-      // Switch header context for this section
       state.title = title;
       state.ctx = exportCtx;
 
-      // Start each dataset section on a fresh page when the PDF already has content
       if (state.pageIndex > 0 && state.y > state.marginTop + 4) {
         pdf.addPage();
         state.pageIndex += 1;
@@ -2839,24 +2858,16 @@
         const canvas = await captureElToCanvas(el);
         if (!canvas || canvas.width < 2 || canvas.height < 2) continue;
 
-        if (mode === "locks" || mode === "whole") {
-          const preferNew = mode === "locks" && state.pageIndex > 0 && state.y > state.marginTop + 20;
-          addWholeImage(pdf, state, canvas, preferNew);
-        } else if (mode === "table") {
-          const imgH = (canvas.height * state.usableWidth) / canvas.width;
-          if (imgH <= state.usableHeight * 0.98) {
-            addWholeImage(pdf, state, canvas, false);
+        if (mode === "table") {
+          const onePage = fitContain(canvas.width, canvas.height, state.usableWidth, state.usableHeight);
+          if (onePage.scale >= 0.4) {
+            addWholeImage(pdf, state, canvas, true);
           } else {
-            if (state.pageIndex > 0 && state.y > state.marginTop + 8) {
-              pdf.addPage();
-              state.pageIndex += 1;
-              writePdfPageHeader(pdf, title, state.pageIndex, state.pageWidth, state.marginX, exportCtx);
-              state.y = state.marginTop;
-            }
             addTableImagePaginated(pdf, state, el, canvas);
           }
         } else {
-          addWholeImage(pdf, state, canvas, false);
+          // Charts, KPIs, locks: scale to fully fit; prefer a clean page
+          addWholeImage(pdf, state, canvas, true);
         }
       }
     }
@@ -3027,6 +3038,228 @@
       }
     }
 
+
+    function stampHtmlFilename(key) {
+      const d = new Date();
+      const pad = (n) => String(n).padStart(2, "0");
+      const stamp = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}`;
+      return `threshold-explorer-${key}-${stamp}.html`;
+    }
+
+    function escapeHtmlText(s) {
+      return String(s ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    /** Convert canvases in a cloned node to <img> so the HTML file is self-contained. */
+    function replaceCanvasesWithImages(root) {
+      root.querySelectorAll("canvas").forEach((canvas) => {
+        try {
+          const img = root.ownerDocument.createElement("img");
+          img.src = canvas.toDataURL("image/png");
+          img.alt = canvas.getAttribute("aria-label") || canvas.id || "chart";
+          img.style.maxWidth = "100%";
+          img.style.height = "auto";
+          img.style.display = "block";
+          canvas.replaceWith(img);
+        } catch (_) {
+          canvas.remove();
+        }
+      });
+    }
+
+    function sanitizeExportClone(root) {
+      root.querySelectorAll(
+        "script, style, input, button, .dl-btn, .btn-clear-all, .btn-remove-lock, [data-remove-lock], .msel, .pdf-btn, .pdf-opt"
+      ).forEach((n) => n.remove());
+      root.querySelectorAll("[data-pdf-skip]").forEach((n) => n.remove());
+      root.querySelectorAll(".upload-panel, .controls-panel").forEach((n) => {
+        // honor same defaults as PDF unless checkboxes say include
+        const includeUpload = !!$("pdf-include-upload")?.checked;
+        const includeControls = !!$("pdf-include-controls")?.checked;
+        if (n.classList.contains("upload-panel") && !includeUpload) n.remove();
+        if (n.classList.contains("controls-panel") && !includeControls) n.remove();
+      });
+      replaceCanvasesWithImages(root);
+    }
+
+    function buildSearchableHtmlDocument(sections) {
+      // sections: [{ title, ctx, htmlBody }]
+      const parts = sections.map((sec) => `
+  <section class="export-section">
+    <header class="export-header">
+      <h1>${escapeHtmlText(sec.title)}</h1>
+      <p class="band">${escapeHtmlText(sec.ctx.divisionLine || "")}</p>
+      <p class="filter">${escapeHtmlText(sec.ctx.detailLine || "")}</p>
+    </header>
+    <div class="export-body">
+      ${sec.htmlBody}
+    </div>
+  </section>`).join("\n");
+
+      return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Threshold Explorer export</title>
+  <style>
+    body { font-family: Arial, Helvetica, sans-serif; margin: 0; padding: 24px; color: #1a1a2e; background: #f5f6fa; }
+    .export-section { background: #fff; border: 1px solid #e5e7f0; border-radius: 12px; padding: 20px 24px; margin-bottom: 28px; }
+    .export-header h1 { margin: 0 0 6px; color: #2649B2; font-size: 22px; }
+    .export-header .band { margin: 0 0 2px; font-weight: 700; font-size: 15px; }
+    .export-header .filter { margin: 0 0 16px; color: #555; font-size: 13px; }
+    .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 18px; }
+    @media (max-width: 800px) { .kpis { grid-template-columns: 1fr 1fr; } }
+    .kpi { border: 1px solid #e5e7f0; border-radius: 10px; padding: 12px; background: #fafbff; }
+    .kpi .name { font-size: 11px; color: #777; font-weight: 700; text-transform: uppercase; }
+    .kpi .value { font-size: 18px; font-weight: 700; color: #2649B2; margin-top: 4px; }
+    .kpi .sub { font-size: 12px; color: #777; margin-top: 2px; }
+    .panel, .heat-card { border: 1px solid #eef0f6; border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+    .section-title { font-size: 16px; font-weight: 700; color: #2649B2; margin: 0 0 10px; }
+    table.data, table.filter-heat-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    table.data th, table.data td, table.filter-heat-table th, table.filter-heat-table td {
+      border: 1px solid #e5e7f0; padding: 6px 8px; text-align: left;
+    }
+    table.data th { background: #2649B2; color: #fff; }
+    img { max-width: 100%; height: auto; }
+    .footnote, .table-note, .heat-caption { color: #666; font-size: 12px; }
+    .locked-card { border: 1px solid #e5e7f0; border-radius: 10px; padding: 12px; margin-bottom: 12px; }
+    .locked-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    @media (max-width: 800px) { .locked-grid { grid-template-columns: 1fr; } }
+    .coverage-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    @media (max-width: 900px) { .coverage-grid { grid-template-columns: 1fr; } }
+    .chart-title { font-weight: 700; }
+    .chart-subtitle { font-size: 12px; color: #666; margin-bottom: 8px; }
+  </style>
+</head>
+<body>
+${parts}
+</body>
+</html>`;
+    }
+
+    async function collectHtmlSection(tabKey, label) {
+      const view = await prepareTabViewForExport(tabKey);
+      if (!view) return null;
+      const app = $(`app-${tabKey}`);
+      const includeUpload = !!$("pdf-include-upload")?.checked;
+      if (app?.classList.contains("hidden") && !includeUpload && tabKey !== "priority") {
+        return null;
+      }
+
+      const includeControls = !!$("pdf-include-controls")?.checked;
+      const blocks = getPdfExportBlocks(view, includeUpload, includeControls);
+      if (!blocks.length) return null;
+
+      // Clone each block so we keep real HTML tables (searchable)
+      const wrap = document.createElement("div");
+      for (const { el } of blocks) {
+        const clone = el.cloneNode(true);
+        // Copy live canvas pixels onto matching canvases in the clone before sanitize
+        const srcCanvases = el.querySelectorAll("canvas");
+        const dstCanvases = clone.querySelectorAll("canvas");
+        srcCanvases.forEach((src, i) => {
+          const dst = dstCanvases[i];
+          if (!dst) return;
+          try {
+            dst.width = src.width;
+            dst.height = src.height;
+            dst.getContext("2d").drawImage(src, 0, 0);
+          } catch (_) { /* ignore */ }
+        });
+        wrap.appendChild(clone);
+      }
+      sanitizeExportClone(wrap);
+      return {
+        title: `Threshold Explorer — ${label}`,
+        ctx: currentExportContext(tabKey),
+        htmlBody: wrap.innerHTML,
+      };
+    }
+
+    async function downloadCurrentPageHtml(btn) {
+      const tabKey = activeTabKey();
+      const tabLabel = document.querySelector(".tab.active")?.textContent?.trim() || tabKey;
+      const prev = btn?.textContent;
+      if (btn) { btn.disabled = true; btn.textContent = "Generating HTML…"; }
+      document.querySelectorAll(".pdf-btn").forEach((b) => { if (b !== btn) b.disabled = true; });
+
+      document.body.classList.add("pdf-exporting");
+      if (!$("pdf-include-upload")?.checked) document.body.classList.add("pdf-hide-upload");
+      if (!$("pdf-include-controls")?.checked) document.body.classList.add("pdf-hide-controls");
+
+      try {
+        const prevScrollY = window.scrollY;
+        const prevTab = tabKey;
+        const sec = await collectHtmlSection(tabKey, tabLabel);
+        if (!sec) {
+          alert("Nothing to export on this tab yet.");
+          return;
+        }
+        const html = buildSearchableHtmlDocument([sec]);
+        const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        triggerDownload(url, stampHtmlFilename(tabKey));
+        setTimeout(() => URL.revokeObjectURL(url), 2000);
+        await prepareTabViewForExport(prevTab);
+        window.scrollTo(0, prevScrollY);
+      } catch (err) {
+        console.error(err);
+        alert("Could not generate HTML export.");
+      } finally {
+        document.body.classList.remove("pdf-exporting", "pdf-hide-upload", "pdf-hide-controls");
+        if (btn) { btn.disabled = false; btn.textContent = prev || "Download HTML"; }
+        document.querySelectorAll(".pdf-btn").forEach((b) => { b.disabled = false; });
+      }
+    }
+
+    async function downloadCoopAndLogisticsHtml(btn) {
+      const prev = btn?.textContent;
+      const prevTab = activeTabKey();
+      if (btn) { btn.disabled = true; btn.textContent = "Generating HTML…"; }
+      document.querySelectorAll(".pdf-btn").forEach((b) => { if (b !== btn) b.disabled = true; });
+
+      document.body.classList.add("pdf-exporting");
+      if (!$("pdf-include-upload")?.checked) document.body.classList.add("pdf-hide-upload");
+      if (!$("pdf-include-controls")?.checked) document.body.classList.add("pdf-hide-controls");
+
+      try {
+        const prevScrollY = window.scrollY;
+        const sections = [];
+        for (const sec of [
+          { key: "coop", label: "COOP" },
+          { key: "logistics", label: "Logistics Claims" },
+        ]) {
+          if (btn) btn.textContent = `Generating HTML… ${sec.label}`;
+          const part = await collectHtmlSection(sec.key, sec.label);
+          if (part) sections.push(part);
+        }
+        if (!sections.length) {
+          alert("Load COOP and/or Logistics data first, then try again.");
+          return;
+        }
+        const html = buildSearchableHtmlDocument(sections);
+        const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        triggerDownload(url, stampHtmlFilename("coop-logistics"));
+        setTimeout(() => URL.revokeObjectURL(url), 2000);
+        await prepareTabViewForExport(prevTab);
+        window.scrollTo(0, prevScrollY);
+      } catch (err) {
+        console.error(err);
+        alert("Could not generate combined HTML export.");
+        try { await prepareTabViewForExport(prevTab); } catch (_) { /* ignore */ }
+      } finally {
+        document.body.classList.remove("pdf-exporting", "pdf-hide-upload", "pdf-hide-controls");
+        if (btn) { btn.disabled = false; btn.textContent = prev || "HTML COOP + Logistics"; }
+        document.querySelectorAll(".pdf-btn").forEach((b) => { b.disabled = false; });
+      }
+    }
+
     document.addEventListener("click", (e) => {
       if (e.target.closest("#btn-pdf-page")) {
         e.preventDefault();
@@ -3036,6 +3269,16 @@
       if (e.target.closest("#btn-pdf-both")) {
         e.preventDefault();
         downloadCoopAndLogisticsPdf($("btn-pdf-both"));
+        return;
+      }
+      if (e.target.closest("#btn-html-page")) {
+        e.preventDefault();
+        downloadCurrentPageHtml($("btn-html-page"));
+        return;
+      }
+      if (e.target.closest("#btn-html-both")) {
+        e.preventDefault();
+        downloadCoopAndLogisticsHtml($("btn-html-both"));
         return;
       }
       const canvasBtn = e.target.closest("[data-dl-canvas]");
