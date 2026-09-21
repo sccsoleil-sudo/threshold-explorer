@@ -2564,15 +2564,17 @@
         if (!includeUpload && panel.classList.contains("upload-panel")) return;
         if (!includeControls && panel.classList.contains("controls-panel")) return;
         if (panel.classList.contains("priority-panel")) return;
-        if (panel.hasAttribute("data-pdf-skip")) return;
-        // Logistics: never export "Live charts …" panels (reason code / by-division)
-        const inLogistics = !!panel.closest("#app-logistics, #view-logistics");
+        // Skip marked panels AND any nested panels inside them
+        // (Logistics injects ".panel" cards into #charts-logistics-by-div)
+        if (panel.closest("[data-pdf-skip]")) return;
+        if (panel.closest("#charts-logistics, #charts-logistics-by-div")) return;
         const titleEl =
           panel.querySelector(":scope > .section-title") ||
           panel.querySelector(":scope > .section-title-row .section-title");
         const titleText = titleEl?.textContent?.replace(/\s+/g, " ").trim() || "";
-        if (inLogistics && /^Live charts\b/i.test(titleText)) return;
-        if (panel.querySelector(":scope > #charts-logistics, :scope > #charts-logistics-by-div")) return;
+        // Keep COOP "Live charts — by Division"; skip Logistics reason-code live charts
+        if (/^Live charts\b/i.test(titleText) && /reason code/i.test(titleText)) return;
+        if (/· by Division\s*$/i.test(titleText) && panel.closest("#view-logistics, #app-logistics")) return;
         if (panel.classList.contains("hidden")) return;
         const parentApp = panel.closest("[id^='app-']");
         if (parentApp && parentApp.classList.contains("hidden")) return;
@@ -3234,17 +3236,19 @@
       root.querySelectorAll("[data-pdf-skip]").forEach((n) => n.remove());
       // Never include empty-state copy ("No locked thresholds yet…") in exports
       root.querySelectorAll(".empty, [id^='empty-']").forEach((n) => n.remove());
-      // Clones are detached from #app-logistics — match Logistics live-chart panels by title/id
+      // Strip Logistics live-chart panels (including nested "R0x · by Division" cards)
+      root.querySelectorAll("[data-pdf-skip], #charts-logistics, #charts-logistics-by-div").forEach((n) => {
+        n.closest(".panel")?.remove();
+        n.remove();
+      });
       root.querySelectorAll(".panel").forEach((panel) => {
         const titleEl =
           panel.querySelector(":scope > .section-title") ||
           panel.querySelector(":scope > .section-title-row .section-title");
         const titleText = titleEl?.textContent?.replace(/\s+/g, " ").trim() || "";
+        // Logistics only: "Live charts — by Reason Code" / "(each reason code)" + nested "R0x · by Division"
         if (/^Live charts\b/i.test(titleText) && /reason code/i.test(titleText)) panel.remove();
-      });
-      root.querySelectorAll("#charts-logistics, #charts-logistics-by-div").forEach((n) => {
-        n.closest(".panel")?.remove();
-        n.remove();
+        else if (/· by Division\s*$/i.test(titleText) && panel.querySelector(".charts, .chart-box")) panel.remove();
       });
       root.querySelectorAll(".upload-panel, .controls-panel").forEach((n) => {
         // honor same defaults as PDF unless checkboxes say include
