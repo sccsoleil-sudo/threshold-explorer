@@ -437,8 +437,39 @@
     .amount-hint {
       margin-top: 8px;
       font-size: 12px;
-      color: #9599a8;
+      color: #888;
     }
+    .reason-bands {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .reason-band {
+      border: 1px solid #e5e7f0;
+      border-radius: 10px;
+      padding: 10px 12px;
+      background: #fff;
+      cursor: pointer;
+      text-align: left;
+      font-family: inherit;
+      width: 100%;
+    }
+    .reason-band:hover { border-color: #c5ceed; }
+    .reason-band.active {
+      border-color: #C98A2C;
+      background: #fffaf3;
+      box-shadow: 0 0 0 1px #C98A2C inset;
+    }
+    .reason-band-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 8px;
+    }
+    .reason-band-name { font-size: 13px; font-weight: 700; color: #1a1a2e; }
+    .reason-band-rule { font-size: 13px; font-weight: 700; color: #C98A2C; }
+    .reason-band-codes { font-size: 11px; color: #777; margin-top: 3px; }
     .btn-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
     button.action {
       appearance: none;
@@ -1868,6 +1899,8 @@
           <div class="controls-grid">
             <div class="control-card">
               <h3>Threshold</h3>
+              <div id="reason-bands-logistics" class="reason-bands" aria-label="Amount bands by reason code"></div>
+              <div class="filter-hint" style="margin:8px 0 10px">Select a band to edit its amount. Shortage + PRX share one band; Returns has its own.</div>
               <div id="under-fields-logistics" class="amount-fields single">
                 <div class="threshold-row">
                   <div>
@@ -1891,7 +1924,7 @@
                 </div>
               </div>
               <div class="slider-meta">
-                <div class="amount-hint" id="amount-hint-logistics">Default $250 matches Logistics proposal band</div>
+                <div class="amount-hint" id="amount-hint-logistics">Active band counts when |Amount| ≤ threshold</div>
               </div>
             </div>
             <div class="control-card">
@@ -2161,6 +2194,40 @@
     const REASON_ORDER = ["R02", "R03", "R04", "R05", "R16", "R17"];
     const TYPE_ORDER = REASON_ORDER.map((r) => TYPE_MAP[r] || r);
 
+    /** Logistics: each reason-code group has its own amount band. */
+    function defaultLogisticsReasonBands() {
+      return [
+        {
+          id: "sho-prx",
+          label: "Shortage + PRX",
+          shortLabel: "SHO+PRX",
+          reasons: ["R02", "R03"],
+          mode: "under",
+          min: 0,
+          max: 250,
+        },
+        {
+          id: "returns",
+          label: "Returns",
+          shortLabel: "Returns",
+          reasons: ["R05"],
+          mode: "under",
+          min: 0,
+          max: 1500,
+        },
+        {
+          id: "other",
+          label: "Other reason codes",
+          shortLabel: "Other",
+          reasons: [],
+          mode: "under",
+          min: 0,
+          max: 250,
+          isCatchAll: true,
+        },
+      ];
+    }
+
     const PRIORITY_LEVELS = ["Low", "Medium", "High", "Urgent"];
     const PRIORITY_COLORS = {
       Low: "#7EB8A8",
@@ -2212,6 +2279,8 @@
         coverageCache: null,
         coverageCharts: { overall: null, group: null },
         _saveTimer: null,
+        reasonBands: id === "logistics" ? defaultLogisticsReasonBands() : null,
+        activeBandId: id === "logistics" ? "sho-prx" : null,
       };
     }
 
@@ -2283,6 +2352,7 @@
     }
 
     function captureUiState(ds) {
+      if (ds.id === "logistics") syncActiveBandFromControls(ds);
       const sels = filterSelections(ds);
       return {
         amountMode: ds.amountMode,
@@ -2295,6 +2365,19 @@
         months: sels.months,
         divisions: sels.divisions,
         typeFocus: ds.id === "logistics" ? selectedValues("type-logistics") : null,
+        reasonBands: ds.id === "logistics" && ds.reasonBands
+          ? ds.reasonBands.map((b) => ({
+              id: b.id,
+              label: b.label,
+              shortLabel: b.shortLabel,
+              reasons: [...(b.reasons || [])],
+              mode: b.mode,
+              min: b.min,
+              max: b.max,
+              isCatchAll: !!b.isCatchAll,
+            }))
+          : null,
+        activeBandId: ds.id === "logistics" ? ds.activeBandId : null,
         locks: ds.locks,
         nextLockId: ds.nextLockId,
       };
@@ -2330,6 +2413,26 @@
       syncExcludeNegUi(ds);
       ds.nextLockId = ui.nextLockId || (ds.locks.reduce((m, l) => Math.max(m, l.id || 0), 0) + 1);
 
+      if (ds.id === "logistics") {
+        if (Array.isArray(ui.reasonBands) && ui.reasonBands.length) {
+          const defaults = defaultLogisticsReasonBands();
+          ds.reasonBands = defaults.map((def) => {
+            const saved = ui.reasonBands.find((b) => b.id === def.id) || {};
+            return {
+              ...def,
+              ...saved,
+              reasons: Array.isArray(saved.reasons) ? saved.reasons : def.reasons,
+              mode: saved.mode === "between" ? "between" : "under",
+              min: Number.isFinite(Number(saved.min)) ? Number(saved.min) : def.min,
+              max: Number.isFinite(Number(saved.max)) ? Number(saved.max) : def.max,
+            };
+          });
+        } else if (!ds.reasonBands?.length) {
+          ds.reasonBands = defaultLogisticsReasonBands();
+        }
+        ds.activeBandId = ui.activeBandId || ds.activeBandId || "sho-prx";
+      }
+
       if (ui.sliderMax) $(`thr-slider-${ds.id}`).max = String(ui.sliderMax);
       if (ds.id === "logistics" && ui.typeFocus != null) {
         // Migrate old single-select values
@@ -2346,15 +2449,17 @@
       setSelectedValues(`month-${ds.id}`, ui.months || []);
       setSelectedValues(`div-${ds.id}`, ui.divisions || []);
 
-      syncAmountModeUi(ds);
-
-      // Re-apply amounts after mode sync (which may copy thr ↔ max)
-      if (ui.thr != null) {
-        $(`thr-${ds.id}`).value = ui.thr;
-        $(`thr-slider-${ds.id}`).value = ui.thr;
+      if (ds.id === "logistics") {
+        applyActiveBandToControls(ds);
+      } else {
+        syncAmountModeUi(ds);
+        if (ui.thr != null) {
+          $(`thr-${ds.id}`).value = ui.thr;
+          $(`thr-slider-${ds.id}`).value = ui.thr;
+        }
+        if (ui.thrMin != null) $(`thr-min-${ds.id}`).value = ui.thrMin;
+        if (ui.thrMax != null) $(`thr-max-${ds.id}`).value = ui.thrMax;
       }
-      if (ui.thrMin != null) $(`thr-min-${ds.id}`).value = ui.thrMin;
-      if (ui.thrMax != null) $(`thr-max-${ds.id}`).value = ui.thrMax;
     }
 
     async function restoreDataset(ds) {
@@ -2624,7 +2729,9 @@
         "All months",
         (m) => MONTH_NAMES[Number(m) - 1] || m
       );
-      const bandLabel = formatAmountRule(rule);
+      const bandLabel = ds.id === "logistics"
+        ? formatLogisticsBandsSummary(ds, filteredRows(ds))
+        : formatAmountRule(rule);
       let filterSub = `${year} · ${month}`;
       if (ds.excludeNegatives) filterSub += " · no negatives";
       return {
@@ -3962,8 +4069,22 @@ ${parts}
         : "Exclude negative amounts";
     }
 
-    /** Normalize amount band: under → [0, hi]; between → [lo, hi]. */
+    /** Normalize amount band: under → [0, hi]; between → [lo, hi].
+     * Logistics: returns the *active* reason-code band (slider / coverage marker). */
     function getAmountRule(ds) {
+      if (ds.id === "logistics" && ds.reasonBands?.length) {
+        syncActiveBandFromControls(ds);
+        const band = getActiveLogisticsBand(ds);
+        if (band) {
+          return {
+            mode: band.mode === "between" ? "between" : "under",
+            min: band.mode === "between" ? band.min : 0,
+            max: band.max,
+            bandId: band.id,
+            bandLabel: band.label,
+          };
+        }
+      }
       if (ds.amountMode === "between") {
         let lo = Number($(`thr-min-${ds.id}`).value);
         let hi = Number($(`thr-max-${ds.id}`).value);
@@ -3979,6 +4100,165 @@ ${parts}
       let hi = Number($(`thr-${ds.id}`).value);
       if (!Number.isFinite(hi) || hi < 0) hi = 0;
       return { mode: "under", min: 0, max: hi };
+    }
+
+    function getActiveLogisticsBand(ds) {
+      if (!ds.reasonBands?.length) return null;
+      return (
+        ds.reasonBands.find((b) => b.id === ds.activeBandId) ||
+        ds.reasonBands[0] ||
+        null
+      );
+    }
+
+    function getLogisticsBandForReason(ds, reason) {
+      if (!ds.reasonBands?.length) return null;
+      const hit = ds.reasonBands.find(
+        (b) => !b.isCatchAll && Array.isArray(b.reasons) && b.reasons.includes(reason)
+      );
+      if (hit) return hit;
+      return ds.reasonBands.find((b) => b.isCatchAll) || null;
+    }
+
+    function getAmountRuleForRow(ds, row) {
+      if (ds.id !== "logistics" || !ds.reasonBands?.length) return getAmountRule(ds);
+      const band = getLogisticsBandForReason(ds, row.reason);
+      if (!band) return getAmountRule(ds);
+      return {
+        mode: band.mode === "between" ? "between" : "under",
+        min: band.mode === "between" ? band.min : 0,
+        max: band.max,
+        bandId: band.id,
+        bandLabel: band.label,
+      };
+    }
+
+    function formatLogisticsBandsSummary(ds, rows) {
+      if (!ds.reasonBands?.length) return formatAmountRule(getAmountRule(ds));
+      const reasonSet = rows?.length
+        ? new Set(rows.map((r) => r.reason))
+        : null;
+      const parts = [];
+      for (const band of ds.reasonBands) {
+        if (band.isCatchAll) {
+          const claimed = new Set(
+            ds.reasonBands.filter((b) => !b.isCatchAll).flatMap((b) => b.reasons || [])
+          );
+          const hasOther = reasonSet
+            ? [...reasonSet].some((r) => !claimed.has(r))
+            : true;
+          if (!hasOther && reasonSet) continue;
+        } else if (reasonSet && !(band.reasons || []).some((r) => reasonSet.has(r))) {
+          continue;
+        }
+        const rule = {
+          mode: band.mode === "between" ? "between" : "under",
+          min: band.min,
+          max: band.max,
+        };
+        parts.push(`${band.shortLabel || band.label} ${formatAmountRule(rule)}`);
+      }
+      return parts.length ? parts.join(" · ") : formatAmountRule(getAmountRule(ds));
+    }
+
+    function logisticsCoverageRows(ds, rows) {
+      const band = getActiveLogisticsBand(ds);
+      if (!band) return rows;
+      if (band.isCatchAll) {
+        const claimed = new Set(
+          ds.reasonBands.filter((b) => !b.isCatchAll).flatMap((b) => b.reasons || [])
+        );
+        return rows.filter((r) => !claimed.has(r.reason));
+      }
+      const set = new Set(band.reasons || []);
+      return rows.filter((r) => set.has(r.reason));
+    }
+
+    function bandRuleLabel(band) {
+      return formatAmountRule({
+        mode: band.mode === "between" ? "between" : "under",
+        min: band.min,
+        max: band.max,
+      });
+    }
+
+    function renderLogisticsReasonBands(ds) {
+      const host = $("reason-bands-logistics");
+      if (!host || !ds.reasonBands) return;
+      host.innerHTML = ds.reasonBands
+        .map((band) => {
+          const codes = band.isCatchAll
+            ? "All other reason codes"
+            : (band.reasons || []).map((c) => TYPE_MAP[c] || c).join(" · ");
+          const active = band.id === ds.activeBandId ? " active" : "";
+          return `<button type="button" class="reason-band${active}" data-band-id="${escapeHtml(band.id)}">
+            <div class="reason-band-top">
+              <span class="reason-band-name">${escapeHtml(band.label)}</span>
+              <span class="reason-band-rule">${escapeHtml(bandRuleLabel(band))}</span>
+            </div>
+            <div class="reason-band-codes">${escapeHtml(codes)}</div>
+          </button>`;
+        })
+        .join("");
+    }
+
+    /** Push thr / mode controls into the active logistics band. */
+    function syncActiveBandFromControls(ds) {
+      if (ds.id !== "logistics" || !ds.reasonBands?.length) return;
+      const band = getActiveLogisticsBand(ds);
+      if (!band) return;
+      band.mode = ds.amountMode === "between" ? "between" : "under";
+      if (band.mode === "between") {
+        let lo = Number($("thr-min-logistics").value);
+        let hi = Number($("thr-max-logistics").value);
+        if (!Number.isFinite(lo) || lo < 0) lo = 0;
+        if (!Number.isFinite(hi) || hi < 0) hi = 0;
+        if (lo > hi) {
+          const t = lo;
+          lo = hi;
+          hi = t;
+        }
+        band.min = lo;
+        band.max = hi;
+      } else {
+        let hi = Number($("thr-logistics").value);
+        if (!Number.isFinite(hi) || hi < 0) hi = 0;
+        band.min = 0;
+        band.max = hi;
+      }
+    }
+
+    /** Load active band into thr / mode controls. */
+    function applyActiveBandToControls(ds) {
+      if (ds.id !== "logistics" || !ds.reasonBands?.length) return;
+      const band = getActiveLogisticsBand(ds);
+      if (!band) return;
+      ds.amountMode = band.mode === "between" ? "between" : "under";
+      if (band.mode === "between") {
+        $("thr-min-logistics").value = band.min;
+        $("thr-max-logistics").value = band.max;
+        $("thr-logistics").value = band.max;
+        $("thr-slider-logistics").value = band.max;
+      } else {
+        $("thr-logistics").value = band.max;
+        $("thr-slider-logistics").value = band.max;
+        $("thr-max-logistics").value = band.max;
+      }
+      syncAmountModeUi(ds);
+      const hint = $("amount-hint-logistics");
+      if (hint) {
+        hint.textContent = `${band.label}: ${
+          band.mode === "between" ? "From ≤ |Amount| ≤ To" : "|Amount| ≤ threshold"
+        }`;
+      }
+      renderLogisticsReasonBands(ds);
+    }
+
+    function setActiveLogisticsBand(ds, bandId) {
+      if (!ds.reasonBands?.some((b) => b.id === bandId)) return;
+      syncActiveBandFromControls(ds);
+      ds.activeBandId = bandId;
+      applyActiveBandToControls(ds);
     }
 
     function inAmountBand(row, rule) {
@@ -4004,16 +4284,17 @@ ${parts}
       if (ds.amountMode === "between") {
         under.classList.add("hidden-mode");
         between.classList.remove("hidden-mode");
-        hint.textContent = "Counts when From ≤ |Amount| ≤ To";
-        // Keep max in sync with single threshold when switching
+        if (ds.id !== "logistics") {
+          hint.textContent = "Counts when From ≤ |Amount| ≤ To";
+        }
         const thr = Number($(`thr-${ds.id}`).value);
         if (Number.isFinite(thr)) $(`thr-max-${ds.id}`).value = thr;
       } else {
         between.classList.add("hidden-mode");
         under.classList.remove("hidden-mode");
-        hint.textContent = ds.id === "logistics"
-          ? "Counts when |Amount| ≤ threshold"
-          : "Counts when |Amount| ≤ threshold";
+        if (ds.id !== "logistics") {
+          hint.textContent = "Counts when |Amount| ≤ threshold";
+        }
         const hi = Number($(`thr-max-${ds.id}`).value);
         if (Number.isFinite(hi)) {
           $(`thr-${ds.id}`).value = hi;
@@ -4022,7 +4303,8 @@ ${parts}
       }
     }
 
-    function groupStats(rows, rule, groupFn) {
+    function groupStats(rows, rule, groupFn, ruleForRow) {
+      const resolve = typeof ruleForRow === "function" ? ruleForRow : () => rule;
       const map = new Map();
       let totalLines = 0, totalDollars = 0, underLines = 0, underDollars = 0;
 
@@ -4042,7 +4324,7 @@ ${parts}
         g.totalDollars += row.absAmount;
         totalLines += 1;
         totalDollars += row.absAmount;
-        if (inAmountBand(row, rule)) {
+        if (inAmountBand(row, resolve(row))) {
           g.underLines += 1;
           g.underDollars += row.absAmount;
           underLines += 1;
@@ -4568,9 +4850,13 @@ ${parts}
       }
 
       const accent = THEME.logistics.thr;
+      const ruleForRow = typeof rule === "function" ? rule : null;
       container.innerHTML = reasons.map((reason) => {
         const subset = rows.filter((r) => r.reason === reason);
-        const stats = groupStats(subset, rule, (r) => r.division);
+        const displayRule = ruleForRow
+          ? ruleForRow({ reason, absAmount: 0 })
+          : rule;
+        const stats = groupStats(subset, displayRule, (r) => r.division, ruleForRow);
         const label = typeLabel(reason);
         const slug = `logistics-${reason}`;
         return `
@@ -4586,23 +4872,30 @@ ${parts}
                 slug
               )}
             </div>
-            <div class="footnote">${subset.length.toLocaleString()} lines · ${moneyShort(stats.totalDollars)} total</div>
+            <div class="footnote">${subset.length.toLocaleString()} lines · ${moneyShort(stats.totalDollars)} total · band ${escapeHtml(formatAmountRule(displayRule))}</div>
           </div>`;
       }).join("");
     }
 
-    function renderKpis(ds, stats) {
+    function renderKpis(ds, stats, rows) {
       const sels = filterSelections(ds);
       const year = formatMultiLabel(sels.years, "All years");
       const month = formatMultiLabel(sels.months, "All months", (m) => MONTH_NAMES[Number(m) - 1] || m);
       const div = formatMultiLabel(sels.divisions, "All divisions");
       const rule = stats.rule;
-      const bandLabel = formatAmountRule(rule);
+      const bandLabel = ds.id === "logistics"
+        ? formatLogisticsBandsSummary(ds, rows || [])
+        : formatAmountRule(rule);
+      const bandSub = ds.id === "logistics"
+        ? "Per reason-code band"
+        : rule.mode === "between"
+          ? "From ≤ |Amount| ≤ To"
+          : "|Amount| ≤ thr";
       $(`kpis-${ds.id}`).innerHTML = `
         <div class="kpi">
           <div class="name">Amount band</div>
-          <div class="value" style="font-size:18px">${escapeHtml(bandLabel)}</div>
-          <div class="sub">${rule.mode === "between" ? "From ≤ |Amount| ≤ To" : "|Amount| ≤ thr"}</div>
+          <div class="value" style="font-size:${ds.id === "logistics" ? "14" : "18"}px;line-height:1.35">${escapeHtml(bandLabel)}</div>
+          <div class="sub">${escapeHtml(bandSub)}</div>
         </div>
         <div class="kpi">
           <div class="name">Lines in band</div>
@@ -4814,7 +5107,8 @@ ${parts}
     function addRow(b, row, rule) {
       b.totalLines += 1;
       b.totalDollars += row.absAmount;
-      if (inAmountBand(row, rule)) {
+      const resolved = typeof rule === "function" ? rule(row) : rule;
+      if (inAmountBand(row, resolved)) {
         b.underLines += 1;
         b.underDollars += row.absAmount;
       }
@@ -5325,12 +5619,16 @@ ${parts}
 
     function refresh(ds) {
       if (!ds.rows.length) return;
+      if (ds.id === "logistics") syncActiveBandFromControls(ds);
       const rule = getAmountRule(ds);
       const rows = filteredRows(ds);
+      const ruleForRow = ds.id === "logistics"
+        ? (row) => getAmountRuleForRow(ds, row)
+        : null;
 
       if (ds.id === "coop") {
         const stats = groupStats(rows, rule, (r) => r.division);
-        renderKpis(ds, stats);
+        renderKpis(ds, stats, rows);
         renderCoverageCharts(ds, rows, rule);
         renderPairedCharts(
           "charts-coop",
@@ -5343,11 +5641,12 @@ ${parts}
         renderCoopTable(rows, rule);
         renderTopClientsTable(ds, rows, rule);
       } else {
-        const stats = groupStats(rows, rule, (r) => typeLabel(r.reason));
+        const stats = groupStats(rows, rule, (r) => typeLabel(r.reason), ruleForRow);
         const typeOrder = sortReasonCodes([...new Set(rows.map((r) => r.reason))])
           .map((c) => typeLabel(c));
-        renderKpis(ds, stats);
-        renderCoverageCharts(ds, rows, rule);
+        renderLogisticsReasonBands(ds);
+        renderKpis(ds, stats, rows);
+        renderCoverageCharts(ds, logisticsCoverageRows(ds, rows), rule);
         renderPairedCharts(
           "charts-logistics",
           stats,
@@ -5356,9 +5655,9 @@ ${parts}
           "Threshold $ vs Total $ by Reason Code",
           "Threshold Lines vs Claim Lines by Reason Code"
         );
-        renderLogisticsByDivisionCharts(rows, rule);
-        renderLogisticsTable(rows, rule);
-        renderTopClientsTable(ds, rows, rule);
+        renderLogisticsByDivisionCharts(rows, ruleForRow);
+        renderLogisticsTable(rows, ruleForRow);
+        renderTopClientsTable(ds, rows, ruleForRow);
       }
       schedulePersist(ds);
       if (!$("view-priority")?.classList.contains("hidden")) refreshPriority();
@@ -5438,29 +5737,39 @@ ${parts}
     }
 
     function lockCurrent(ds) {
+      if (ds.id === "logistics") syncActiveBandFromControls(ds);
       const rule = getAmountRule(ds);
       const rows = filteredRows(ds);
+      const ruleForRow = ds.id === "logistics"
+        ? (row) => getAmountRuleForRow(ds, row)
+        : null;
       const groupFn = ds.id === "coop"
         ? (r) => r.division
         : (r) => typeLabel(r.reason);
       const order = ds.id === "coop"
         ? DIVISION_ORDER
         : sortReasonCodes([...new Set(rows.map((r) => r.reason))]).map((c) => typeLabel(c));
-      const stats = groupStats(rows, rule, groupFn);
+      const stats = groupStats(rows, rule, groupFn, ruleForRow);
       const sels = filterSelections(ds);
       const reasonFocus = ds.id === "logistics"
         ? formatMultiLabel(selectedReasonCodes().map(typeLabel), "All reason codes")
         : "";
+      const bandLabel = ds.id === "logistics"
+        ? formatLogisticsBandsSummary(ds, rows)
+        : formatAmountRule(rule);
       ds.locks.push({
         id: ds.nextLockId++,
         threshold: rule.max,
-        bandLabel: formatAmountRule(rule),
+        bandLabel,
         mode: rule.mode,
         year: formatMultiLabel(sels.years, "All years"),
         monthLabel: formatMultiLabel(sels.months, "All months", (m) => MONTH_NAMES[Number(m) - 1] || m),
         division: formatMultiLabel(sels.divisions, "All divisions"),
         reasonFocus,
         excludeNegatives: !!ds.excludeNegatives,
+        reasonBands: ds.id === "logistics"
+          ? ds.reasonBands.map((b) => ({ ...b, reasons: [...(b.reasons || [])] }))
+          : null,
         underLines: stats.underLines,
         totalLines: stats.totalLines,
         underDollars: stats.underDollars,
@@ -5468,9 +5777,9 @@ ${parts}
         groups: sortGroups(stats.groups, order),
       });
       renderLocks(ds);
-      // Ensure coverage charts exist, then pin lock dots on both
       if (ds.rows.length) {
-        renderCoverageCharts(ds, filteredRows(ds), rule);
+        const covRows = ds.id === "logistics" ? logisticsCoverageRows(ds, filteredRows(ds)) : filteredRows(ds);
+        renderCoverageCharts(ds, covRows, rule);
       }
       applyCoverageLockMarks(ds);
       schedulePersist(ds);
@@ -5561,6 +5870,18 @@ ${parts}
       });
 
       $(`lock-${ds.id}`).addEventListener("click", () => lockCurrent(ds));
+
+      if (ds.id === "logistics") {
+        $("reason-bands-logistics")?.addEventListener("click", (e) => {
+          const btn = e.target.closest("[data-band-id]");
+          if (!btn) return;
+          setActiveLogisticsBand(ds, btn.getAttribute("data-band-id"));
+          ds.coverageCache = null;
+          destroyCoverageCharts(ds);
+          refresh(ds);
+        });
+        applyActiveBandToControls(ds);
+      }
     }
 
     function wirePriorityTab() {
@@ -5669,7 +5990,9 @@ ${parts}
         $(`thr-${key}`).value = v;
         $(`thr-slider-${key}`).value = v;
         $(`thr-max-${key}`).value = v;
-        refresh(datasets[key]);
+        const ds = datasets[key];
+        if (ds?.id === "logistics") syncActiveBandFromControls(ds);
+        refresh(ds);
       });
     });
 
@@ -5677,7 +6000,7 @@ ${parts}
     wireDataset(datasets.logistics);
     wirePriorityTab();
     syncAmountModeUi(datasets.coop);
-    syncAmountModeUi(datasets.logistics);
+    applyActiveBandToControls(datasets.logistics);
     syncExcludeNegUi(datasets.coop);
     syncExcludeNegUi(datasets.logistics);
     renderLocks(datasets.coop);
