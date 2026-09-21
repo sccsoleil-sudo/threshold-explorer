@@ -3071,6 +3071,133 @@
       });
     }
 
+    /** Bake bar/track/swatch layout into inline styles so empty CSS bars stay visible offline. */
+    function solidifyBarCharts(root) {
+      root.querySelectorAll(".bar-group").forEach((g) => {
+        g.style.cssText +=
+          ";display:flex;align-items:flex-end;gap:10px;margin-bottom:14px;width:100%;";
+      });
+      root.querySelectorAll(".bar-cat-label").forEach((lab) => {
+        lab.style.cssText +=
+          ";width:110px;flex-shrink:0;font-size:12px;font-weight:600;text-align:right;padding-right:8px;";
+      });
+      root.querySelectorAll(".bars").forEach((b) => {
+        b.style.cssText +=
+          ";flex:1;display:flex;flex-direction:column;gap:4px;min-width:0;width:100%;";
+      });
+      root.querySelectorAll(".bar-row").forEach((row) => {
+        row.style.cssText += ";display:flex;align-items:center;gap:8px;width:100%;";
+      });
+      root.querySelectorAll(".bar-track").forEach((track) => {
+        track.style.cssText +=
+          ";flex:1;height:16px;min-height:16px;background:#f0f1f7;border-radius:4px;overflow:hidden;display:block;min-width:60px;";
+        const fill = track.querySelector(".bar-fill");
+        if (!fill) return;
+        const prev = fill.getAttribute("style") || "";
+        fill.setAttribute(
+          "style",
+          `${prev};height:16px;min-height:16px;display:block;border-radius:4px;box-sizing:border-box;`
+        );
+        if (!fill.innerHTML) fill.innerHTML = "&nbsp;";
+      });
+      root.querySelectorAll(".swatch").forEach((sw) => {
+        const prev = sw.getAttribute("style") || "";
+        sw.setAttribute(
+          "style",
+          `${prev};width:12px;height:12px;min-width:12px;min-height:12px;display:inline-block;border-radius:3px;flex-shrink:0;`
+        );
+        if (!sw.innerHTML) sw.innerHTML = "&nbsp;";
+      });
+      root.querySelectorAll(".legend").forEach((leg) => {
+        leg.style.cssText +=
+          ";display:flex;gap:16px;font-size:12px;margin-bottom:10px;flex-wrap:wrap;";
+      });
+      root.querySelectorAll(".legend-item").forEach((item) => {
+        item.style.cssText += ";display:flex;align-items:center;gap:6px;";
+      });
+    }
+
+    /**
+     * Replace CSS bar chart boxes with a PNG snapshot (reliable visual) plus
+     * plain-text rows underneath so Ctrl/Cmd+F still finds the numbers.
+     */
+    async function embedChartBoxSnapshots(srcRoot, cloneRoot) {
+      if (typeof html2canvas !== "function") return;
+      const srcBoxes = [...srcRoot.querySelectorAll(".chart-box")];
+      const dstBoxes = [...cloneRoot.querySelectorAll(".chart-box")];
+      const n = Math.min(srcBoxes.length, dstBoxes.length);
+      for (let i = 0; i < n; i++) {
+        const src = srcBoxes[i];
+        const dst = dstBoxes[i];
+        if (!src || !dst || src.offsetWidth < 2 || src.offsetHeight < 2) continue;
+        try {
+          const canvas = await html2canvas(src, {
+            backgroundColor: "#ffffff",
+            scale: 2,
+            logging: false,
+            useCORS: true,
+            scrollX: 0,
+            scrollY: 0,
+            ignoreElements: (node) =>
+              node.classList?.contains("dl-btn") ||
+              node.hasAttribute?.("data-dl-el-btn") ||
+              node.classList?.contains("btn-remove-lock") ||
+              node.hasAttribute?.("data-remove-lock"),
+          });
+          const title =
+            src.querySelector(".chart-title")?.textContent?.trim() || "chart";
+          const subtitle =
+            src.querySelector(".chart-subtitle")?.textContent?.trim() || "";
+          const img = document.createElement("img");
+          img.src = canvas.toDataURL("image/png");
+          img.alt = title;
+          img.style.cssText = "max-width:100%;height:auto;display:block;margin:8px 0;";
+
+          const search = document.createElement("div");
+          search.className = "chart-search-text";
+          search.setAttribute("data-searchable", "1");
+          search.style.cssText =
+            "margin-top:6px;font-size:12px;color:#333;line-height:1.55;";
+          const lines = [];
+          const legend = [...src.querySelectorAll(".legend-item")]
+            .map((el) => el.textContent.replace(/\s+/g, " ").trim())
+            .filter(Boolean);
+          if (legend.length) lines.push(legend.join(" · "));
+          src.querySelectorAll(".bar-group").forEach((g) => {
+            const lab = g.querySelector(".bar-cat-label")?.textContent?.replace(/\s+/g, " ").trim() || "";
+            const vals = [...g.querySelectorAll(".bar-value")]
+              .map((v) => v.textContent.replace(/\s+/g, " ").trim())
+              .filter(Boolean);
+            if (lab || vals.length) lines.push(`${lab}: ${vals.join(" · ")}`);
+          });
+          search.innerHTML = lines
+            .map((line) => `<div>${escapeHtmlText(line)}</div>`)
+            .join("");
+
+          dst.innerHTML = "";
+          const head = document.createElement("div");
+          head.className = "chart-head";
+          const titles = document.createElement("div");
+          const tEl = document.createElement("div");
+          tEl.className = "chart-title";
+          tEl.textContent = title;
+          titles.appendChild(tEl);
+          if (subtitle) {
+            const sEl = document.createElement("div");
+            sEl.className = "chart-subtitle";
+            sEl.textContent = subtitle;
+            titles.appendChild(sEl);
+          }
+          head.appendChild(titles);
+          dst.appendChild(head);
+          dst.appendChild(img);
+          if (lines.length) dst.appendChild(search);
+        } catch (_) {
+          /* keep CSS bars; solidifyBarCharts will inline them */
+        }
+      }
+    }
+
     function sanitizeExportClone(root) {
       root.querySelectorAll(
         "script, style, input, button, .dl-btn, .btn-clear-all, .btn-remove-lock, [data-remove-lock], .msel, .pdf-btn, .pdf-opt"
@@ -3084,6 +3211,7 @@
         if (n.classList.contains("controls-panel") && !includeControls) n.remove();
       });
       replaceCanvasesWithImages(root);
+      solidifyBarCharts(root);
     }
 
     function buildSearchableHtmlDocument(sections) {
@@ -3205,6 +3333,8 @@ ${parts}
             dst.getContext("2d").drawImage(src, 0, 0);
           } catch (_) { /* ignore */ }
         });
+        // Snapshot CSS bar chart boxes → PNG + searchable text (bars vanish in plain HTML otherwise)
+        await embedChartBoxSnapshots(el, clone);
         wrap.appendChild(clone);
       }
       sanitizeExportClone(wrap);
