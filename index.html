@@ -1898,10 +1898,8 @@
           </div>
           <div class="controls-grid">
             <div class="control-card">
-              <h3>Max amount by reason code</h3>
-              <div class="filter-hint" style="margin:0 0 10px">Band for each reason = max of the amount you enter and all locked thresholds for that reason. Shortage + PRX share one max; Returns has its own.</div>
-              <div id="reason-max-logistics" class="reason-bands" aria-label="Max amount by reason code"></div>
-              <div id="under-fields-logistics" class="amount-fields single hidden-mode">
+              <h3>Threshold</h3>
+              <div id="under-fields-logistics" class="amount-fields single">
                 <div class="threshold-row">
                   <div>
                     <label for="thr-logistics">Amount ($)</label>
@@ -1924,7 +1922,7 @@
                 </div>
               </div>
               <div class="slider-meta">
-                <div class="amount-hint" id="amount-hint-logistics">In-band when |Amount| ≤ that reason’s max</div>
+                <div class="amount-hint" id="amount-hint-logistics">Drag to explore coverage / lock scenarios. Amount band Lines &amp; $$ use max locked threshold per reason code.</div>
               </div>
             </div>
             <div class="control-card">
@@ -2327,7 +2325,6 @@
     }
 
     function captureUiState(ds) {
-      if (ds.id === "logistics") readLogisticsReasonMaxFromDom(ds);
       const sels = filterSelections(ds);
       return {
         amountMode: ds.amountMode,
@@ -2411,10 +2408,7 @@
       }
       if (ui.thrMin != null) $(`thr-min-${ds.id}`).value = ui.thrMin;
       if (ui.thrMax != null) $(`thr-max-${ds.id}`).value = ui.thrMax;
-      if (ds.id === "logistics") {
-        ensureLogisticsReasonMax(ds);
-        renderLogisticsReasonMaxInputs(ds);
-      }
+      if (ds.id === "logistics") ensureLogisticsReasonMax(ds);
     }
 
     async function restoreDataset(ds) {
@@ -4024,27 +4018,8 @@ ${parts}
         : "Exclude negative amounts";
     }
 
-    /** Normalize amount band: under → [0, hi]; between → [lo, hi].
-     * Logistics coverage marker uses the max among reason maxes in the current filter. */
+    /** Normalize amount band from the threshold slider / inputs (under → [0, hi]; between → [lo, hi]). */
     function getAmountRule(ds) {
-      if (ds.id === "logistics") {
-        readLogisticsReasonMaxFromDom(ds);
-        const rows = ds.rows.length ? filteredRows(ds) : [];
-        const maxes = logisticsReasonMaxesForRows(ds, rows);
-        const hi = maxes.length ? Math.max(...maxes) : (Number($("thr-logistics")?.value) || ds.defaultThr || 0);
-        if (ds.amountMode === "between") {
-          let lo = Number($("thr-min-logistics").value);
-          if (!Number.isFinite(lo) || lo < 0) lo = 0;
-          let top = hi;
-          if (lo > top) {
-            const t = lo;
-            lo = top;
-            top = t;
-          }
-          return { mode: "between", min: lo, max: top };
-        }
-        return { mode: "under", min: 0, max: hi };
-      }
       if (ds.amountMode === "between") {
         let lo = Number($(`thr-min-${ds.id}`).value);
         let hi = Number($(`thr-max-${ds.id}`).value);
@@ -4097,14 +4072,13 @@ ${parts}
     }
 
     /**
-     * Effective band max for a reason code =
-     * max(entered draft, all locked thresholds that apply to that reason).
+     * Effective band max for Lines/$$ KPI for a reason code:
+     * max of all locked thresholds that apply to that reason; if none, current slider.
      */
     function logisticsReasonMaxValue(ds, reason) {
-      const draft = draftLogisticsReasonMax(ds, reason);
       const locked = lockedMaxForReason(ds, reason);
-      if (locked == null) return draft;
-      return Math.max(draft, locked);
+      if (locked != null) return locked;
+      return getAmountRule(ds).max;
     }
 
     function setLogisticsReasonMax(ds, reasons, value) {
@@ -4131,16 +4105,6 @@ ${parts}
       return groups;
     }
 
-    function readLogisticsReasonMaxFromDom(ds) {
-      if (ds.id !== "logistics") return;
-      ensureLogisticsReasonMax(ds);
-      document.querySelectorAll("#reason-max-logistics [data-reason-max-group]").forEach((input) => {
-        const id = input.getAttribute("data-reason-max-group");
-        const group = logisticsReasonMaxGroups(ds).find((g) => g.id === id);
-        if (!group) return;
-        setLogisticsReasonMax(ds, group.reasons, input.value);
-      });
-    }
 
     function logisticsReasonMaxesForRows(ds, rows) {
       const codes = rows?.length
@@ -4151,10 +4115,10 @@ ${parts}
 
     function getAmountRuleForRow(ds, row) {
       if (ds.id !== "logistics") return getAmountRule(ds);
+      const base = getAmountRule(ds);
       const max = logisticsReasonMaxValue(ds, row.reason);
-      if (ds.amountMode === "between") {
-        let lo = Number($("thr-min-logistics")?.value);
-        if (!Number.isFinite(lo) || lo < 0) lo = 0;
+      if (base.mode === "between") {
+        let lo = base.min;
         let hi = max;
         if (lo > hi) {
           const t = lo;
@@ -4179,7 +4143,9 @@ ${parts}
         seen.add(key);
         const maxes = codes.map((c) => logisticsReasonMaxValue(ds, c));
         const hi = Math.max(...maxes);
-        parts.push(`${group.shortLabel || group.label} ≤ ${moneyShort(hi)}`);
+        const locked = Math.max(...codes.map((c) => lockedMaxForReason(ds, c) ?? -Infinity));
+        const tag = Number.isFinite(locked) && locked > -Infinity ? "" : " (slider)";
+        parts.push(`${group.shortLabel || group.label} ≤ ${moneyShort(hi)}${tag}`);
       }
       return parts.length ? parts.join(" · ") : formatAmountRule(getAmountRule(ds));
     }
@@ -4188,40 +4154,6 @@ ${parts}
       return rows;
     }
 
-    function renderLogisticsReasonMaxInputs(ds) {
-      const host = $("reason-max-logistics");
-      if (!host) return;
-      ensureLogisticsReasonMax(ds);
-      host.innerHTML = logisticsReasonMaxGroups(ds)
-        .map((group) => {
-          const draft = Math.max(...group.reasons.map((c) => draftLogisticsReasonMax(ds, c)));
-          const effective = Math.max(...group.reasons.map((c) => logisticsReasonMaxValue(ds, c)));
-          const locked = Math.max(
-            ...group.reasons.map((c) => {
-              const v = lockedMaxForReason(ds, c);
-              return v == null ? -Infinity : v;
-            })
-          );
-          const hasLock = Number.isFinite(locked) && locked > -Infinity;
-          const codes = group.reasons.map((c) => TYPE_MAP[c] || c).join(" · ");
-          const lockNote = hasLock
-            ? ` · locks max ${moneyShort(locked)} · band ≤ ${moneyShort(effective)}`
-            : ` · band ≤ ${moneyShort(effective)} (entered max)`;
-          return `<div class="reason-band" style="cursor:default">
-            <div class="reason-band-top">
-              <span class="reason-band-name">${escapeHtml(group.label)}</span>
-              <label class="reason-band-rule" style="display:flex;align-items:center;gap:6px;font-weight:600;color:#1a1a2e">
-                Max $
-                <input type="number" min="0" step="1" value="${draft}"
-                  data-reason-max-group="${escapeHtml(group.id)}"
-                  style="width:100px;padding:6px 8px;border:1px solid #d8dce8;border-radius:8px;font:inherit" />
-              </label>
-            </div>
-            <div class="reason-band-codes">${escapeHtml(codes)}${escapeHtml(lockNote)}</div>
-          </div>`;
-        })
-        .join("");
-    }
 
     function inAmountBand(row, rule) {
       const a = row.absAmount;
@@ -4243,23 +4175,20 @@ ${parts}
       chips.forEach((c) => {
         c.classList.toggle("active", c.getAttribute("data-mode") === ds.amountMode);
       });
-      if (ds.id === "logistics") {
-        // Per-reason max inputs are the source of truth; keep legacy thr fields hidden
-        under.classList.add("hidden-mode");
-        between.classList.add("hidden-mode");
-        if (hint) hint.textContent = "In-band when |Amount| ≤ max(entered, all locks) for that reason";
-        return;
-      }
       if (ds.amountMode === "between") {
         under.classList.add("hidden-mode");
         between.classList.remove("hidden-mode");
-        hint.textContent = "Counts when From ≤ |Amount| ≤ To";
+        hint.textContent = ds.id === "logistics"
+          ? "Coverage uses From–To. Lines/$$ in band still use max locked threshold per reason."
+          : "Counts when From ≤ |Amount| ≤ To";
         const thr = Number($(`thr-${ds.id}`).value);
         if (Number.isFinite(thr)) $(`thr-max-${ds.id}`).value = thr;
       } else {
         between.classList.add("hidden-mode");
         under.classList.remove("hidden-mode");
-        hint.textContent = "Counts when |Amount| ≤ threshold";
+        hint.textContent = ds.id === "logistics"
+          ? "Drag to explore coverage / lock. Lines/$$ in band = max locked $ per reason (else slider)."
+          : "Counts when |Amount| ≤ threshold";
         const hi = Number($(`thr-max-${ds.id}`).value);
         if (Number.isFinite(hi)) {
           $(`thr-${ds.id}`).value = hi;
@@ -4852,7 +4781,7 @@ ${parts}
         ? formatLogisticsBandsSummary(ds, rows || [])
         : formatAmountRule(rule);
       const bandSub = ds.id === "logistics"
-        ? "≤ max(entered, all locks) per reason"
+        ? "≤ max locked threshold per reason (else slider)"
         : rule.mode === "between"
           ? "From ≤ |Amount| ≤ To"
           : "|Amount| ≤ thr";
@@ -5586,7 +5515,6 @@ ${parts}
 
     function refresh(ds) {
       if (!ds.rows.length) return;
-      if (ds.id === "logistics") readLogisticsReasonMaxFromDom(ds);
       const rule = getAmountRule(ds);
       const rows = filteredRows(ds);
       const ruleForRow = ds.id === "logistics"
@@ -5608,23 +5536,24 @@ ${parts}
         renderCoopTable(rows, rule);
         renderTopClientsTable(ds, rows, rule);
       } else {
-        const stats = groupStats(rows, rule, (r) => typeLabel(r.reason), ruleForRow);
+        // Live charts follow the drag-bar; Amount band Lines/$$ KPIs use lock-aware per-reason bands
+        const liveStats = groupStats(rows, rule, (r) => typeLabel(r.reason));
+        const kpiStats = groupStats(rows, rule, (r) => typeLabel(r.reason), ruleForRow);
         const typeOrder = sortReasonCodes([...new Set(rows.map((r) => r.reason))])
           .map((c) => typeLabel(c));
-        renderLogisticsReasonMaxInputs(ds);
-        renderKpis(ds, stats, rows);
-        renderCoverageCharts(ds, logisticsCoverageRows(ds, rows), rule);
+        renderKpis(ds, kpiStats, rows);
+        renderCoverageCharts(ds, rows, rule);
         renderPairedCharts(
           "charts-logistics",
-          stats,
+          liveStats,
           THEME.logistics.thr,
           typeOrder,
           "Threshold $ vs Total $ by Reason Code",
           "Threshold Lines vs Claim Lines by Reason Code"
         );
-        renderLogisticsByDivisionCharts(rows, ruleForRow);
-        renderLogisticsTable(rows, ruleForRow);
-        renderTopClientsTable(ds, rows, ruleForRow);
+        renderLogisticsByDivisionCharts(rows, rule);
+        renderLogisticsTable(rows, rule);
+        renderTopClientsTable(ds, rows, rule);
       }
       schedulePersist(ds);
       if (!$("view-priority")?.classList.contains("hidden")) refreshPriority();
@@ -5704,27 +5633,30 @@ ${parts}
     }
 
     function lockCurrent(ds) {
-      if (ds.id === "logistics") readLogisticsReasonMaxFromDom(ds);
       const rule = getAmountRule(ds);
+      if (ds.id === "logistics") {
+        // Snapshot slider max onto selected reason codes for this lock
+        ensureLogisticsReasonMax(ds);
+        const codes = selectedReasonCodes();
+        const applyCodes = codes.length
+          ? codes
+          : [...new Set(filteredRows(ds).map((r) => r.reason))];
+        setLogisticsReasonMax(ds, applyCodes, rule.max);
+      }
       const rows = filteredRows(ds);
-      const ruleForRow = ds.id === "logistics"
-        ? (row) => getAmountRuleForRow(ds, row)
-        : null;
       const groupFn = ds.id === "coop"
         ? (r) => r.division
         : (r) => typeLabel(r.reason);
       const order = ds.id === "coop"
         ? DIVISION_ORDER
         : sortReasonCodes([...new Set(rows.map((r) => r.reason))]).map((c) => typeLabel(c));
-      const stats = groupStats(rows, rule, groupFn, ruleForRow);
+      const stats = groupStats(rows, rule, groupFn);
       const sels = filterSelections(ds);
       const reasonCodes = ds.id === "logistics" ? [...selectedReasonCodes()] : null;
       const reasonFocus = ds.id === "logistics"
-        ? formatMultiLabel(reasonCodes.map(typeLabel), "All reason codes")
+        ? formatMultiLabel((reasonCodes || []).map(typeLabel), "All reason codes")
         : "";
-      const bandLabel = ds.id === "logistics"
-        ? formatLogisticsBandsSummary(ds, rows)
-        : formatAmountRule(rule);
+      const bandLabel = formatAmountRule(rule);
       ds.locks.push({
         id: ds.nextLockId++,
         threshold: rule.max,
@@ -5839,26 +5771,6 @@ ${parts}
 
       $(`lock-${ds.id}`).addEventListener("click", () => lockCurrent(ds));
 
-      if (ds.id === "logistics") {
-        $("reason-max-logistics")?.addEventListener("input", (e) => {
-          const input = e.target.closest("[data-reason-max-group]");
-          if (!input) return;
-          const id = input.getAttribute("data-reason-max-group");
-          const group = logisticsReasonMaxGroups(ds).find((g) => g.id === id);
-          if (!group) return;
-          setLogisticsReasonMax(ds, group.reasons, input.value);
-          // Keep hidden thr in sync with overall max for coverage marker helpers
-          const overall = getAmountRule(ds).max;
-          $("thr-logistics").value = overall;
-          $("thr-slider-logistics").value = overall;
-          $("thr-max-logistics").value = overall;
-          ds.coverageCache = null;
-          destroyCoverageCharts(ds);
-          refresh(ds);
-        });
-        ensureLogisticsReasonMax(ds);
-        renderLogisticsReasonMaxInputs(ds);
-      }
     }
 
     function wirePriorityTab() {
@@ -5968,14 +5880,6 @@ ${parts}
         $(`thr-slider-${key}`).value = v;
         $(`thr-max-${key}`).value = v;
         const ds = datasets[key];
-        if (ds?.id === "logistics") {
-          // Preset applies the same max to every reason-code group
-          ensureLogisticsReasonMax(ds);
-          for (const g of logisticsReasonMaxGroups(ds)) {
-            setLogisticsReasonMax(ds, g.reasons, v);
-          }
-          renderLogisticsReasonMaxInputs(ds);
-        }
         refresh(ds);
       });
     });
@@ -5984,8 +5888,7 @@ ${parts}
     wireDataset(datasets.logistics);
     wirePriorityTab();
     syncAmountModeUi(datasets.coop);
-    ensureLogisticsReasonMax(datasets.logistics);
-    renderLogisticsReasonMaxInputs(datasets.logistics);
+    syncAmountModeUi(datasets.logistics);
     syncExcludeNegUi(datasets.coop);
     syncExcludeNegUi(datasets.logistics);
     renderLocks(datasets.coop);
