@@ -1575,6 +1575,18 @@
       gap: 10px;
       margin-bottom: 8px;
     }
+    .locked-card-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      justify-content: flex-end;
+    }
+    .section-title-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
     .locked-card-head h3 {
       margin: 0;
       font-size: 14px;
@@ -1769,24 +1781,37 @@
           <div class="footnote">Bar width scaled to sqrt(value); labels show Threshold ÷ Total %. Accent color matches COOP one-pager (#B55CE6).</div>
         </div>
 
-        <div class="panel" data-pdf-block="locks">
+        <div class="panel" data-pdf-block="locks" id="locks-panel-coop" data-dl-el data-dl-name="coop-locked-thresholds">
           <div class="section-title-row">
             <div class="section-title">Locked thresholds</div>
-            <button type="button" class="btn-clear-all" data-clear-locks="coop">Clear all locks</button>
+            <div class="section-title-actions">
+              <button type="button" class="dl-btn" data-dl-el-btn data-dl-name="coop-locked-thresholds" title="Download all locked cards as one image">Download all</button>
+              <button type="button" class="btn-clear-all" data-clear-locks="coop">Clear all locks</button>
+            </div>
           </div>
           <div id="empty-coop" class="empty">No locked thresholds yet. Click “Lock this threshold” above — each card gets a red <b>Remove</b> button.</div>
           <div id="locks-coop" class="locked-grid"></div>
         </div>
 
-        <div class="panel" data-pdf-block="table">
-          <div class="section-title">Detail table — Division × Reason Code</div>
+        <div class="panel" data-pdf-block="table" data-dl-el data-dl-name="coop-detail-table">
+          <div class="section-title-row">
+            <div class="section-title">Detail table — Division × Reason Code</div>
+            <div class="section-title-actions">
+              <button type="button" class="dl-btn" data-dl-el-btn data-dl-name="coop-detail-table" title="Download this table as an image">Download table</button>
+            </div>
+          </div>
           <div style="overflow:auto">
             <table class="data" id="table-coop"></table>
           </div>
         </div>
 
-        <div class="panel" data-pdf-block="table">
-          <div class="section-title">Top clients — Customer × Division</div>
+        <div class="panel" data-pdf-block="table" data-dl-el data-dl-name="coop-top-clients">
+          <div class="section-title-row">
+            <div class="section-title">Top clients — Customer × Division</div>
+            <div class="section-title-actions">
+              <button type="button" class="dl-btn" data-dl-el-btn data-dl-name="coop-top-clients" title="Download this table as an image">Download table</button>
+            </div>
+          </div>
           <div style="overflow:auto">
             <table class="data clients-matrix" id="table-clients-coop"></table>
           </div>
@@ -1926,24 +1951,37 @@
           <div class="footnote">One pair of charts per selected reason code, broken down by division (CPD / PPD / LPD / LDB).</div>
         </div>
 
-        <div class="panel" data-pdf-block="locks">
+        <div class="panel" data-pdf-block="locks" id="locks-panel-logistics" data-dl-el data-dl-name="logistics-locked-thresholds">
           <div class="section-title-row">
             <div class="section-title">Locked thresholds</div>
-            <button type="button" class="btn-clear-all" data-clear-locks="logistics">Clear all locks</button>
+            <div class="section-title-actions">
+              <button type="button" class="dl-btn" data-dl-el-btn data-dl-name="logistics-locked-thresholds" title="Download all locked cards as one image">Download all</button>
+              <button type="button" class="btn-clear-all" data-clear-locks="logistics">Clear all locks</button>
+            </div>
           </div>
           <div id="empty-logistics" class="empty">No locked thresholds yet. Click “Lock this threshold” above — each card gets a red <b>Remove</b> button.</div>
           <div id="locks-logistics" class="locked-grid"></div>
         </div>
 
-        <div class="panel" data-pdf-block="table">
-          <div class="section-title">Detail table — Division × Reason Code</div>
+        <div class="panel" data-pdf-block="table" data-dl-el data-dl-name="logistics-detail-table">
+          <div class="section-title-row">
+            <div class="section-title">Detail table — Division × Reason Code</div>
+            <div class="section-title-actions">
+              <button type="button" class="dl-btn" data-dl-el-btn data-dl-name="logistics-detail-table" title="Download this table as an image">Download table</button>
+            </div>
+          </div>
           <div style="overflow:auto">
             <table class="data" id="table-logistics"></table>
           </div>
         </div>
 
-        <div class="panel" data-pdf-block="table">
-          <div class="section-title">Top clients — Customer × Division</div>
+        <div class="panel" data-pdf-block="table" data-dl-el data-dl-name="logistics-top-clients">
+          <div class="section-title-row">
+            <div class="section-title">Top clients — Customer × Division</div>
+            <div class="section-title-actions">
+              <button type="button" class="dl-btn" data-dl-el-btn data-dl-name="logistics-top-clients" title="Download this table as an image">Download table</button>
+            </div>
+          </div>
           <div style="overflow:auto">
             <table class="data clients-matrix" id="table-clients-logistics"></table>
           </div>
@@ -2377,20 +2415,33 @@
     async function downloadElementPng(el, filename, btn) {
       if (!el || typeof html2canvas !== "function") return;
       if (btn) btn.disabled = true;
+      const restore = typeof expandOverflowForCapture === "function" ? expandOverflowForCapture(el) : null;
       try {
+        await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
         const canvas = await html2canvas(el, {
           backgroundColor: "#ffffff",
           scale: 2,
           logging: false,
           useCORS: true,
+          scrollX: 0,
+          scrollY: 0,
           ignoreElements: (node) =>
             node.classList?.contains("dl-btn") ||
             node.hasAttribute?.("data-dl-el-btn") ||
-            node.classList?.contains("pdf-btn"),
+            node.classList?.contains("pdf-btn") ||
+            node.classList?.contains("btn-clear-all") ||
+            node.classList?.contains("btn-remove-lock") ||
+            node.hasAttribute?.("data-remove-lock"),
+          onclone: (_doc, cloned) => {
+            cloned.querySelectorAll(
+              ".dl-btn, .btn-clear-all, .btn-remove-lock, [data-remove-lock], [data-dl-el-btn]"
+            ).forEach((n) => n.remove());
+          },
         });
         const name = filename.endsWith(".png") ? filename : `${filename}.png`;
         triggerDownload(canvas.toDataURL("image/png"), name);
       } finally {
+        if (restore) restore();
         if (btn) btn.disabled = false;
       }
     }
@@ -4093,6 +4144,12 @@
           ? `Clear all locks (${ds.locks.length})`
           : "Clear all locks";
       });
+      const panel = $(`locks-panel-${ds.id}`);
+      panel?.querySelectorAll("[data-dl-el-btn]").forEach((btn) => {
+        // Only the section-level "Download all" (not per-card buttons inside the grid)
+        if (btn.closest(".locked-card")) return;
+        btn.disabled = !ds.locks.length;
+      });
     }
 
     function renderLocks(ds) {
@@ -4108,10 +4165,13 @@
       empty.classList.add("hidden");
       const accent = THEME[ds.id].thr;
       grid.innerHTML = ds.locks.map((lock) => `
-        <div class="locked-card">
+        <div class="locked-card" data-dl-el data-dl-name="${ds.id}-locked-${lock.id}">
           <div class="locked-card-head">
             <h3>Locked #${lock.id}</h3>
-            <button type="button" class="btn-remove-lock" data-remove-lock="${lock.id}" data-ds="${ds.id}">Remove</button>
+            <div class="locked-card-actions">
+              <button type="button" class="dl-btn" data-dl-el-btn data-dl-name="${ds.id}-locked-${lock.id}" title="Download this locked card as one image">Download card</button>
+              <button type="button" class="btn-remove-lock" data-remove-lock="${lock.id}" data-ds="${ds.id}">Remove</button>
+            </div>
           </div>
           <div class="thr">${escapeHtml(lock.bandLabel || moneyShort(lock.threshold))}</div>
           <div class="meta">
