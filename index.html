@@ -71,6 +71,9 @@
     body.pdf-exporting.pdf-hide-upload .upload-panel {
       display: none !important;
     }
+    body.pdf-exporting.pdf-hide-controls .controls-panel {
+      display: none !important;
+    }
     button.pdf-btn {
       appearance: none;
       border: 1px solid #2649B2;
@@ -90,6 +93,11 @@
       cursor: wait;
       filter: none;
     }
+    button.pdf-btn-secondary {
+      background: #fff;
+      color: #2649B2;
+    }
+    button.pdf-btn-secondary:hover { background: #EEF1FB; filter: none; }
     .tabs {
       display: flex;
       gap: 0;
@@ -1650,7 +1658,12 @@
           <input type="checkbox" id="pdf-include-upload" />
           Include drop-file area
         </label>
+        <label class="pdf-opt" title="When unchecked, the threshold + filters controls panel is left out of the PDF">
+          <input type="checkbox" id="pdf-include-controls" />
+          Include threshold / filters
+        </label>
         <button type="button" class="pdf-btn" id="btn-pdf-page" title="Download a PDF of the current tab">Download PDF</button>
+        <button type="button" class="pdf-btn pdf-btn-secondary" id="btn-pdf-both" title="Download COOP and Logistics Claims together as one PDF">Download COOP + Logistics</button>
       </div>
     </div>
     <div class="tabs">
@@ -2439,7 +2452,13 @@
           },
         });
         const name = filename.endsWith(".png") ? filename : `${filename}.png`;
-        triggerDownload(canvas.toDataURL("image/png"), name);
+        const tabLabel = document.querySelector(".tab.active")?.textContent?.trim() || activeTabKey();
+        const stamped = stampExportHeaderOnCanvas(
+          canvas,
+          `Threshold Explorer — ${tabLabel}`,
+          currentExportContext()
+        );
+        triggerDownload(stamped.toDataURL("image/png"), name);
       } finally {
         if (restore) restore();
         if (btn) btn.disabled = false;
@@ -2511,7 +2530,7 @@
       };
     }
 
-    function getPdfExportBlocks(view, includeUpload) {
+    function getPdfExportBlocks(view, includeUpload, includeControls) {
       const blocks = [];
       const seen = new Set();
       const add = (el, mode) => {
@@ -2534,6 +2553,7 @@
 
       view.querySelectorAll(".panel").forEach((panel) => {
         if (!includeUpload && panel.classList.contains("upload-panel")) return;
+        if (!includeControls && panel.classList.contains("controls-panel")) return;
         if (panel.classList.contains("priority-panel")) return;
         if (panel.classList.contains("hidden")) return;
         const parentApp = panel.closest("[id^='app-']");
@@ -2545,6 +2565,98 @@
         else add(panel, "whole");
       });
       return blocks;
+    }
+
+    /** Division + filters for PDF / PNG headers (matches on-screen filter state). */
+    function currentExportContext(tabKey) {
+      const tab = tabKey || activeTabKey();
+      if (tab === "priority") {
+        return {
+          division: "—",
+          divisionLine: "Division: —",
+          detailLine: "Priority / Urgency explorer",
+        };
+      }
+      const ds = datasets[tab];
+      if (!ds) {
+        return { division: "—", divisionLine: "Division: —", detailLine: "" };
+      }
+      const years = selectedValues(`year-${ds.id}`);
+      const months = selectedValues(`month-${ds.id}`);
+      const divs = selectedValues(`div-${ds.id}`);
+      const rule = getAmountRule(ds);
+      const division = formatMultiLabel(divs, "All divisions");
+      const year = formatMultiLabel(years, "All years");
+      const month = formatMultiLabel(
+        months,
+        "All months",
+        (m) => MONTH_NAMES[Number(m) - 1] || m
+      );
+      let band = "";
+      if (rule.mode === "between") {
+        band = `Between $${Number(rule.min).toLocaleString()} – $${Number(rule.max).toLocaleString()}`;
+      } else {
+        band = `≤ $${Number(rule.max).toLocaleString()}`;
+      }
+      const bits = [band, year, month];
+      if (ds.excludeNegatives) bits.push("no negatives");
+      return {
+        division,
+        divisionLine: `Division: ${division}`,
+        detailLine: bits.join(" · "),
+      };
+    }
+
+    function writePdfPageHeader(pdf, title, pageIndex, pageWidth, marginX, ctx) {
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(11);
+      pdf.setTextColor(38, 73, 178);
+      pdf.text(title, marginX, 22);
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(10);
+      pdf.setTextColor(26, 26, 46);
+      pdf.text(ctx?.divisionLine || "Division: —", marginX, 36);
+      if (ctx?.detailLine) {
+        pdf.setFont("helvetica", "normal");
+        pdf.setFontSize(8);
+        pdf.setTextColor(100, 100, 110);
+        pdf.text(ctx.detailLine, marginX, 48);
+      }
+      pdf.setFont("helvetica", "normal");
+      pdf.setFontSize(8);
+      pdf.setTextColor(120, 120, 120);
+      pdf.text(`Page ${pageIndex}`, pageWidth - marginX, 22, { align: "right" });
+    }
+
+    /** Stamp Division / filter context onto a PNG canvas before download. */
+    function stampExportHeaderOnCanvas(canvas, title, ctx) {
+      const padX = 24;
+      const padY = 16;
+      const line1 = title || "Threshold Explorer";
+      const line2 = ctx?.divisionLine || "Division: —";
+      const line3 = ctx?.detailLine || "";
+      const headerH = line3 ? 88 : 68;
+      const out = document.createElement("canvas");
+      out.width = canvas.width;
+      out.height = canvas.height + headerH;
+      const g = out.getContext("2d");
+      g.fillStyle = "#ffffff";
+      g.fillRect(0, 0, out.width, out.height);
+      g.fillStyle = "#f5f6fa";
+      g.fillRect(0, 0, out.width, headerH);
+      g.fillStyle = "#2649B2";
+      g.font = "bold 28px Arial, Helvetica, sans-serif";
+      g.fillText(line1, padX, padY + 28);
+      g.fillStyle = "#1a1a2e";
+      g.font = "bold 24px Arial, Helvetica, sans-serif";
+      g.fillText(line2, padX, padY + 56);
+      if (line3) {
+        g.fillStyle = "#666";
+        g.font = "18px Arial, Helvetica, sans-serif";
+        g.fillText(line3, padX, padY + 78);
+      }
+      g.drawImage(canvas, 0, headerH);
+      return out;
     }
 
     async function captureElToCanvas(el) {
@@ -2577,24 +2689,13 @@
       }
     }
 
-    function writePdfPageHeader(pdf, title, pageIndex, pageWidth, marginX) {
-      pdf.setFont("helvetica", "bold");
-      pdf.setFontSize(11);
-      pdf.setTextColor(38, 73, 178);
-      pdf.text(title, marginX, 28);
-      pdf.setFont("helvetica", "normal");
-      pdf.setFontSize(8);
-      pdf.setTextColor(120, 120, 120);
-      pdf.text(`Page ${pageIndex}`, pageWidth - marginX, 28, { align: "right" });
-    }
-
     function canvasToJpeg(canvas, quality) {
       return canvas.toDataURL("image/jpeg", quality ?? 0.92);
     }
 
     /** Draw a captured canvas onto the PDF as one uncut block (scale down to fit page if needed). */
     function addWholeImage(pdf, state, canvas, preferNewPage) {
-      const { marginX, marginTop, marginBottom, usableWidth, usableHeight, pageWidth, pageHeight, title } = state;
+      const { marginX, marginTop, marginBottom, usableWidth, usableHeight, pageWidth, pageHeight, title, ctx } = state;
       let imgW = usableWidth;
       let imgH = (canvas.height * imgW) / canvas.width;
 
@@ -2607,12 +2708,12 @@
 
       if (state.pageIndex === 0) {
         state.pageIndex = 1;
-        writePdfPageHeader(pdf, title, state.pageIndex, pageWidth, marginX);
+        writePdfPageHeader(pdf, title, state.pageIndex, pageWidth, marginX, ctx);
         state.y = marginTop;
       } else if (preferNewPage || state.y + imgH > pageHeight - marginBottom) {
         pdf.addPage();
         state.pageIndex += 1;
-        writePdfPageHeader(pdf, title, state.pageIndex, pageWidth, marginX);
+        writePdfPageHeader(pdf, title, state.pageIndex, pageWidth, marginX, ctx);
         state.y = marginTop;
       }
 
@@ -2622,7 +2723,7 @@
 
     /** Paginate a tall table panel using row boundaries inside that panel only. */
     function addTableImagePaginated(pdf, state, el, canvas) {
-      const { marginX, marginTop, marginBottom, usableWidth, usableHeight, pageWidth, pageHeight, title } = state;
+      const { marginX, marginTop, marginBottom, usableWidth, usableHeight, pageWidth, pageHeight, title, ctx } = state;
       const pxScale = canvas.width / Math.max(el.offsetWidth, 1);
       const pageSlicePx = Math.max(1, Math.floor((usableHeight * canvas.width) / usableWidth));
 
@@ -2658,22 +2759,22 @@
         const slice = document.createElement("canvas");
         slice.width = canvas.width;
         slice.height = sliceH;
-        const ctx = slice.getContext("2d");
-        ctx.fillStyle = "#ffffff";
-        ctx.fillRect(0, 0, slice.width, slice.height);
-        ctx.drawImage(canvas, 0, y, canvas.width, sliceH, 0, 0, canvas.width, sliceH);
+        const sctx = slice.getContext("2d");
+        sctx.fillStyle = "#ffffff";
+        sctx.fillRect(0, 0, slice.width, slice.height);
+        sctx.drawImage(canvas, 0, y, canvas.width, sliceH, 0, 0, canvas.width, sliceH);
 
         const imgW = usableWidth;
         const imgH = (sliceH * imgW) / canvas.width;
 
         if (state.pageIndex === 0) {
           state.pageIndex = 1;
-          writePdfPageHeader(pdf, title, state.pageIndex, pageWidth, marginX);
+          writePdfPageHeader(pdf, title, state.pageIndex, pageWidth, marginX, ctx);
           state.y = marginTop;
         } else if (state.y + imgH > pageHeight - marginBottom) {
           pdf.addPage();
           state.pageIndex += 1;
-          writePdfPageHeader(pdf, title, state.pageIndex, pageWidth, marginX);
+          writePdfPageHeader(pdf, title, state.pageIndex, pageWidth, marginX, ctx);
           state.y = marginTop;
         }
 
@@ -2690,52 +2791,19 @@
       return er.top - rr.top;
     }
 
-    async function downloadCurrentPagePdf(btn) {
-      const view = activeViewEl();
-      if (!view) return;
-      if (typeof html2canvas !== "function") {
-        alert("PDF export needs html2canvas. Check your network connection and reload.");
-        return;
-      }
-      const JsPDF = window.jspdf?.jsPDF;
-      if (!JsPDF) {
-        alert("PDF export needs jsPDF. Check your network connection and reload.");
-        return;
-      }
-
-      const includeUpload = !!$("pdf-include-upload")?.checked;
-      const tabKey = activeTabKey();
-      const tabLabel =
-        document.querySelector(".tab.active")?.textContent?.trim() || tabKey;
-      const title = `Threshold Explorer — ${tabLabel}`;
-      const prev = btn?.textContent;
-      if (btn) {
-        btn.disabled = true;
-        btn.textContent = "Generating PDF…";
-      }
-
-      document.body.classList.add("pdf-exporting");
-      if (!includeUpload) document.body.classList.add("pdf-hide-upload");
-
-      try {
-        const prevScrollY = window.scrollY;
-        window.scrollTo(0, 0);
-        await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-
-        const blocks = getPdfExportBlocks(view, includeUpload);
-        if (!blocks.length) {
-          alert("Nothing to export on this tab yet.");
-          return;
-        }
-
-        const pdf = new JsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
-        const pageWidth = pdf.internal.pageSize.getWidth();
-        const pageHeight = pdf.internal.pageSize.getHeight();
-        const marginX = 28;
-        const marginTop = 48;
-        const marginBottom = 36;
-        const state = {
+    function createPdfState(title, exportCtx) {
+      const JsPDF = window.jspdf.jsPDF;
+      const pdf = new JsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const marginX = 28;
+      const marginTop = 62;
+      const marginBottom = 36;
+      return {
+        pdf,
+        state: {
           title,
+          ctx: exportCtx,
           pageIndex: 0,
           y: marginTop,
           marginX,
@@ -2745,43 +2813,121 @@
           usableHeight: pageHeight - marginTop - marginBottom,
           pageWidth,
           pageHeight,
-        };
+        },
+      };
+    }
 
-        for (let i = 0; i < blocks.length; i++) {
-          const { el, mode } = blocks[i];
-          if (btn) btn.textContent = `Generating PDF… ${i + 1}/${blocks.length}`;
-          // Ensure element is in view for Windows / Chrome painting
-          el.scrollIntoView({ block: "nearest" });
-          await new Promise((r) => setTimeout(r, 30));
+    async function appendBlocksToPdf(pdf, state, blocks, title, exportCtx, onProgress) {
+      // Switch header context for this section
+      state.title = title;
+      state.ctx = exportCtx;
 
-          const canvas = await captureElToCanvas(el);
-          if (!canvas || canvas.width < 2 || canvas.height < 2) continue;
+      // Start each dataset section on a fresh page when the PDF already has content
+      if (state.pageIndex > 0 && state.y > state.marginTop + 4) {
+        pdf.addPage();
+        state.pageIndex += 1;
+        writePdfPageHeader(pdf, title, state.pageIndex, state.pageWidth, state.marginX, exportCtx);
+        state.y = state.marginTop;
+      }
 
-          if (mode === "locks" || mode === "whole") {
-            // Locks always start on a fresh page when prior content exists; never sliced
-            const preferNew = mode === "locks" && state.pageIndex > 0 && state.y > state.marginTop + 20;
-            addWholeImage(pdf, state, canvas, preferNew);
-          } else if (mode === "table") {
-            const imgH = (canvas.height * state.usableWidth) / canvas.width;
-            if (imgH <= state.usableHeight * 0.98) {
-              addWholeImage(pdf, state, canvas, false);
-            } else {
-              // Start table on a fresh page, then split only between rows
-              if (state.pageIndex > 0 && state.y > state.marginTop + 8) {
-                pdf.addPage();
-                state.pageIndex += 1;
-                writePdfPageHeader(pdf, title, state.pageIndex, pageWidth, marginX);
-                state.y = marginTop;
-              }
-              addTableImagePaginated(pdf, state, el, canvas);
-            }
-          } else {
+      for (let i = 0; i < blocks.length; i++) {
+        const { el, mode } = blocks[i];
+        if (onProgress) onProgress(i + 1, blocks.length);
+        el.scrollIntoView({ block: "nearest" });
+        await new Promise((r) => setTimeout(r, 30));
+
+        const canvas = await captureElToCanvas(el);
+        if (!canvas || canvas.width < 2 || canvas.height < 2) continue;
+
+        if (mode === "locks" || mode === "whole") {
+          const preferNew = mode === "locks" && state.pageIndex > 0 && state.y > state.marginTop + 20;
+          addWholeImage(pdf, state, canvas, preferNew);
+        } else if (mode === "table") {
+          const imgH = (canvas.height * state.usableWidth) / canvas.width;
+          if (imgH <= state.usableHeight * 0.98) {
             addWholeImage(pdf, state, canvas, false);
+          } else {
+            if (state.pageIndex > 0 && state.y > state.marginTop + 8) {
+              pdf.addPage();
+              state.pageIndex += 1;
+              writePdfPageHeader(pdf, title, state.pageIndex, state.pageWidth, state.marginX, exportCtx);
+              state.y = state.marginTop;
+            }
+            addTableImagePaginated(pdf, state, el, canvas);
           }
+        } else {
+          addWholeImage(pdf, state, canvas, false);
+        }
+      }
+    }
+
+    async function prepareTabViewForExport(tabKey) {
+      document.querySelectorAll(".tab").forEach((t) => {
+        t.classList.toggle("active", t.getAttribute("data-tab") === tabKey);
+      });
+      $("view-coop")?.classList.toggle("hidden", tabKey !== "coop");
+      $("view-logistics")?.classList.toggle("hidden", tabKey !== "logistics");
+      $("view-priority")?.classList.toggle("hidden", tabKey !== "priority");
+
+      if (tabKey === "priority") {
+        if (typeof refreshPriority === "function") refreshPriority();
+      } else if (datasets[tabKey]?.rows?.length && typeof refresh === "function") {
+        refresh(datasets[tabKey]);
+      }
+      window.scrollTo(0, 0);
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      await new Promise((r) => setTimeout(r, 120));
+      return $(`view-${tabKey}`);
+    }
+
+    async function downloadCurrentPagePdf(btn) {
+      const view = activeViewEl();
+      if (!view) return;
+      if (typeof html2canvas !== "function") {
+        alert("PDF export needs html2canvas. Check your network connection and reload.");
+        return;
+      }
+      if (!window.jspdf?.jsPDF) {
+        alert("PDF export needs jsPDF. Check your network connection and reload.");
+        return;
+      }
+
+      const includeUpload = !!$("pdf-include-upload")?.checked;
+      const includeControls = !!$("pdf-include-controls")?.checked;
+      const tabKey = activeTabKey();
+      const tabLabel =
+        document.querySelector(".tab.active")?.textContent?.trim() || tabKey;
+      const title = `Threshold Explorer — ${tabLabel}`;
+      const exportCtx = currentExportContext(tabKey);
+      const prev = btn?.textContent;
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = "Generating PDF…";
+      }
+      $("btn-pdf-both") && ($("btn-pdf-both").disabled = true);
+
+      document.body.classList.add("pdf-exporting");
+      if (!includeUpload) document.body.classList.add("pdf-hide-upload");
+      if (!includeControls) document.body.classList.add("pdf-hide-controls");
+
+      try {
+        const prevScrollY = window.scrollY;
+        window.scrollTo(0, 0);
+        await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+        const blocks = getPdfExportBlocks(view, includeUpload, includeControls);
+        if (!blocks.length) {
+          alert("Nothing to export on this tab yet.");
+          return;
         }
 
+        const { pdf, state } = createPdfState(title, exportCtx);
+        await appendBlocksToPdf(pdf, state, blocks, title, exportCtx, (i, n) => {
+          if (btn) btn.textContent = `Generating PDF… ${i}/${n}`;
+        });
+
         if (state.pageIndex === 0) {
-          writePdfPageHeader(pdf, title, 1, pageWidth, marginX);
+          writePdfPageHeader(pdf, title, 1, state.pageWidth, state.marginX, exportCtx);
         }
         pdf.save(stampPdfFilename(tabKey));
         window.scrollTo(0, prevScrollY);
@@ -2789,11 +2935,95 @@
         console.error(err);
         alert("Could not generate PDF. Try again, or download individual charts as PNG.");
       } finally {
-        document.body.classList.remove("pdf-exporting", "pdf-hide-upload");
+        document.body.classList.remove("pdf-exporting", "pdf-hide-upload", "pdf-hide-controls");
         if (btn) {
           btn.disabled = false;
           btn.textContent = prev || "Download PDF";
         }
+        if ($("btn-pdf-both")) $("btn-pdf-both").disabled = false;
+      }
+    }
+
+    /** One PDF with COOP then Logistics Claims sections. */
+    async function downloadCoopAndLogisticsPdf(btn) {
+      if (typeof html2canvas !== "function") {
+        alert("PDF export needs html2canvas. Check your network connection and reload.");
+        return;
+      }
+      if (!window.jspdf?.jsPDF) {
+        alert("PDF export needs jsPDF. Check your network connection and reload.");
+        return;
+      }
+
+      const includeUpload = !!$("pdf-include-upload")?.checked;
+      const includeControls = !!$("pdf-include-controls")?.checked;
+      const prevTab = activeTabKey();
+      const prev = btn?.textContent;
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = "Generating PDF…";
+      }
+      $("btn-pdf-page") && ($("btn-pdf-page").disabled = true);
+
+      document.body.classList.add("pdf-exporting");
+      if (!includeUpload) document.body.classList.add("pdf-hide-upload");
+      if (!includeControls) document.body.classList.add("pdf-hide-controls");
+
+      try {
+        const prevScrollY = window.scrollY;
+        const sections = [
+          { key: "coop", label: "COOP" },
+          { key: "logistics", label: "Logistics Claims" },
+        ];
+
+        const title = "Threshold Explorer — COOP + Logistics";
+        const { pdf, state } = createPdfState(title, currentExportContext("coop"));
+        let any = false;
+
+        for (const sec of sections) {
+          if (btn) btn.textContent = `Generating PDF… ${sec.label}`;
+          const view = await prepareTabViewForExport(sec.key);
+          if (!view) continue;
+
+          // Skip if this dataset has no app content yet (no file loaded)
+          const app = $(`app-${sec.key}`);
+          if (app?.classList.contains("hidden") && !includeUpload) {
+            continue;
+          }
+
+          const blocks = getPdfExportBlocks(view, includeUpload, includeControls);
+          if (!blocks.length) continue;
+          any = true;
+
+          const secTitle = `Threshold Explorer — ${sec.label}`;
+          const exportCtx = currentExportContext(sec.key);
+          await appendBlocksToPdf(pdf, state, blocks, secTitle, exportCtx, (i, n) => {
+            if (btn) btn.textContent = `Generating PDF… ${sec.label} ${i}/${n}`;
+          });
+        }
+
+        if (!any) {
+          alert("Load COOP and/or Logistics data first, then try again.");
+          return;
+        }
+
+        if (state.pageIndex === 0) {
+          writePdfPageHeader(pdf, title, 1, state.pageWidth, state.marginX, currentExportContext("coop"));
+        }
+        pdf.save(stampPdfFilename("coop-logistics"));
+        await prepareTabViewForExport(prevTab);
+        window.scrollTo(0, prevScrollY);
+      } catch (err) {
+        console.error(err);
+        alert("Could not generate combined PDF. Try downloading each tab separately.");
+        try { await prepareTabViewForExport(prevTab); } catch (_) { /* ignore */ }
+      } finally {
+        document.body.classList.remove("pdf-exporting", "pdf-hide-upload", "pdf-hide-controls");
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = prev || "Download COOP + Logistics";
+        }
+        if ($("btn-pdf-page")) $("btn-pdf-page").disabled = false;
       }
     }
 
@@ -2801,6 +3031,11 @@
       if (e.target.closest("#btn-pdf-page")) {
         e.preventDefault();
         downloadCurrentPagePdf($("btn-pdf-page"));
+        return;
+      }
+      if (e.target.closest("#btn-pdf-both")) {
+        e.preventDefault();
+        downloadCoopAndLogisticsPdf($("btn-pdf-both"));
         return;
       }
       const canvasBtn = e.target.closest("[data-dl-canvas]");
