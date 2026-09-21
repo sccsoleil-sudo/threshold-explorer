@@ -46,11 +46,14 @@
     }
     .topbar-actions {
       display: flex;
-      flex-direction: column;
-      align-items: flex-end;
-      gap: 8px;
+      flex-direction: row;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px 10px;
       flex-shrink: 0;
       padding-top: 2px;
+      max-width: min(100%, 720px);
     }
     .pdf-opt {
       display: flex;
@@ -80,8 +83,8 @@
       background: #2649B2;
       color: #fff;
       border-radius: 10px;
-      padding: 10px 16px;
-      font-size: 13px;
+      padding: 8px 12px;
+      font-size: 12px;
       font-weight: 700;
       cursor: pointer;
       font-family: inherit;
@@ -1691,16 +1694,14 @@
         <p class="sub">Interactive threshold playbook with the same chart style as the COOP / Logistics one-pagers. Lock a threshold, then try another to compare.</p>
       </div>
       <div class="topbar-actions">
-        <label class="pdf-opt" title="When unchecked, the Excel drop / upload block is left out of the PDF">
+        <label class="pdf-opt" title="When unchecked, the Excel drop / upload block is left out of the HTML download">
           <input type="checkbox" id="pdf-include-upload" />
           Include drop-file area
         </label>
-        <label class="pdf-opt" title="When unchecked, the threshold + filters controls panel is left out of the PDF">
+        <label class="pdf-opt" title="When unchecked, the threshold + filters controls panel is left out of the HTML download">
           <input type="checkbox" id="pdf-include-controls" />
           Include threshold / filters
         </label>
-        <button type="button" class="pdf-btn" id="btn-pdf-page" title="Download a PDF of the current tab">Download PDF</button>
-        <button type="button" class="pdf-btn pdf-btn-secondary" id="btn-pdf-both" title="Download COOP and Logistics Claims together as one PDF">Download COOP + Logistics</button>
         <button type="button" class="pdf-btn pdf-btn-secondary" id="btn-html-page" title="Download searchable HTML of the current tab (tables as text)">Download HTML</button>
         <button type="button" class="pdf-btn pdf-btn-secondary" id="btn-html-both" title="Download searchable HTML for COOP + Logistics together">HTML COOP + Logistics</button>
       </div>
@@ -3557,16 +3558,6 @@ ${parts}
     }
 
     document.addEventListener("click", (e) => {
-      if (e.target.closest("#btn-pdf-page")) {
-        e.preventDefault();
-        downloadCurrentPagePdf($("btn-pdf-page"));
-        return;
-      }
-      if (e.target.closest("#btn-pdf-both")) {
-        e.preventDefault();
-        downloadCoopAndLogisticsPdf($("btn-pdf-both"));
-        return;
-      }
       if (e.target.closest("#btn-html-page")) {
         e.preventDefault();
         downloadCurrentPageHtml($("btn-html-page"));
