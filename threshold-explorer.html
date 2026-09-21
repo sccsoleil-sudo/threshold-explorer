@@ -1899,7 +1899,7 @@
           <div class="controls-grid">
             <div class="control-card">
               <h3>Max amount by reason code</h3>
-              <div class="filter-hint" style="margin:0 0 10px">Band for each reason = ≤ the max amount you enter. Shortage + PRX share one max; Returns has its own.</div>
+              <div class="filter-hint" style="margin:0 0 10px">Band for each reason = max of the amount you enter and all locked thresholds for that reason. Shortage + PRX share one max; Returns has its own.</div>
               <div id="reason-max-logistics" class="reason-bands" aria-label="Max amount by reason code"></div>
               <div id="under-fields-logistics" class="amount-fields single hidden-mode">
                 <div class="threshold-row">
@@ -4066,11 +4066,45 @@ ${parts}
       if (!ds.reasonMax) ds.reasonMax = defaultLogisticsReasonMax();
     }
 
-    function logisticsReasonMaxValue(ds, reason) {
+    /** Draft max the user typed (before / beside locks). */
+    function draftLogisticsReasonMax(ds, reason) {
       ensureLogisticsReasonMax(ds);
       const v = Number(ds.reasonMax[reason]);
       if (Number.isFinite(v) && v >= 0) return v;
       return ds.defaultThr || 250;
+    }
+
+    /** Threshold this lock contributes for a reason code (null if lock does not apply). */
+    function lockThresholdForReason(lock, reason) {
+      if (lock.reasonMax && Number.isFinite(Number(lock.reasonMax[reason]))) {
+        return Number(lock.reasonMax[reason]);
+      }
+      const codes = Array.isArray(lock.reasonCodes) ? lock.reasonCodes : null;
+      if (codes && codes.length && !codes.includes(reason)) return null;
+      const thr = Number(lock.threshold);
+      return Number.isFinite(thr) ? thr : null;
+    }
+
+    /** Max locked threshold among all locks that cover this reason code. */
+    function lockedMaxForReason(ds, reason) {
+      let hi = null;
+      for (const lock of ds.locks || []) {
+        const t = lockThresholdForReason(lock, reason);
+        if (t == null) continue;
+        hi = hi == null ? t : Math.max(hi, t);
+      }
+      return hi;
+    }
+
+    /**
+     * Effective band max for a reason code =
+     * max(entered draft, all locked thresholds that apply to that reason).
+     */
+    function logisticsReasonMaxValue(ds, reason) {
+      const draft = draftLogisticsReasonMax(ds, reason);
+      const locked = lockedMaxForReason(ds, reason);
+      if (locked == null) return draft;
+      return Math.max(draft, locked);
     }
 
     function setLogisticsReasonMax(ds, reasons, value) {
@@ -4094,7 +4128,6 @@ ${parts}
           reasons: [code],
         });
       }
-      // Always show core groups even before data load
       return groups;
     }
 
@@ -4146,14 +4179,12 @@ ${parts}
         seen.add(key);
         const maxes = codes.map((c) => logisticsReasonMaxValue(ds, c));
         const hi = Math.max(...maxes);
-        // Band = ≤ maximum entered for this reason-code group
         parts.push(`${group.shortLabel || group.label} ≤ ${moneyShort(hi)}`);
       }
       return parts.length ? parts.join(" · ") : formatAmountRule(getAmountRule(ds));
     }
 
     function logisticsCoverageRows(ds, rows) {
-      // Coverage uses all currently filtered rows; marker at max of their entered maxes
       return rows;
     }
 
@@ -4163,20 +4194,30 @@ ${parts}
       ensureLogisticsReasonMax(ds);
       host.innerHTML = logisticsReasonMaxGroups(ds)
         .map((group) => {
-          const maxes = group.reasons.map((c) => logisticsReasonMaxValue(ds, c));
-          const val = Math.max(...maxes);
+          const draft = Math.max(...group.reasons.map((c) => draftLogisticsReasonMax(ds, c)));
+          const effective = Math.max(...group.reasons.map((c) => logisticsReasonMaxValue(ds, c)));
+          const locked = Math.max(
+            ...group.reasons.map((c) => {
+              const v = lockedMaxForReason(ds, c);
+              return v == null ? -Infinity : v;
+            })
+          );
+          const hasLock = Number.isFinite(locked) && locked > -Infinity;
           const codes = group.reasons.map((c) => TYPE_MAP[c] || c).join(" · ");
+          const lockNote = hasLock
+            ? ` · locks max ${moneyShort(locked)} · band ≤ ${moneyShort(effective)}`
+            : ` · band ≤ ${moneyShort(effective)} (entered max)`;
           return `<div class="reason-band" style="cursor:default">
             <div class="reason-band-top">
               <span class="reason-band-name">${escapeHtml(group.label)}</span>
               <label class="reason-band-rule" style="display:flex;align-items:center;gap:6px;font-weight:600;color:#1a1a2e">
                 Max $
-                <input type="number" min="0" step="1" value="${val}"
+                <input type="number" min="0" step="1" value="${draft}"
                   data-reason-max-group="${escapeHtml(group.id)}"
                   style="width:100px;padding:6px 8px;border:1px solid #d8dce8;border-radius:8px;font:inherit" />
               </label>
             </div>
-            <div class="reason-band-codes">${escapeHtml(codes)} · band ≤ entered max</div>
+            <div class="reason-band-codes">${escapeHtml(codes)}${escapeHtml(lockNote)}</div>
           </div>`;
         })
         .join("");
@@ -4206,7 +4247,7 @@ ${parts}
         // Per-reason max inputs are the source of truth; keep legacy thr fields hidden
         under.classList.add("hidden-mode");
         between.classList.add("hidden-mode");
-        if (hint) hint.textContent = "In-band when |Amount| ≤ that reason’s max entered above";
+        if (hint) hint.textContent = "In-band when |Amount| ≤ max(entered, all locks) for that reason";
         return;
       }
       if (ds.amountMode === "between") {
@@ -5063,14 +5104,16 @@ ${parts}
       ds.locks = [];
       renderLocks(ds);
       applyCoverageLockMarks(ds);
-      schedulePersist(ds);
+      if (ds.id === "logistics" && ds.rows.length) refresh(ds);
+      else schedulePersist(ds);
     }
 
     function removeLock(ds, lockId) {
       ds.locks = ds.locks.filter((l) => l.id !== lockId);
       renderLocks(ds);
       applyCoverageLockMarks(ds);
-      schedulePersist(ds);
+      if (ds.id === "logistics" && ds.rows.length) refresh(ds);
+      else schedulePersist(ds);
     }
 
     function syncClearButtons(ds) {
@@ -5675,8 +5718,9 @@ ${parts}
         : sortReasonCodes([...new Set(rows.map((r) => r.reason))]).map((c) => typeLabel(c));
       const stats = groupStats(rows, rule, groupFn, ruleForRow);
       const sels = filterSelections(ds);
+      const reasonCodes = ds.id === "logistics" ? [...selectedReasonCodes()] : null;
       const reasonFocus = ds.id === "logistics"
-        ? formatMultiLabel(selectedReasonCodes().map(typeLabel), "All reason codes")
+        ? formatMultiLabel(reasonCodes.map(typeLabel), "All reason codes")
         : "";
       const bandLabel = ds.id === "logistics"
         ? formatLogisticsBandsSummary(ds, rows)
@@ -5690,6 +5734,7 @@ ${parts}
         monthLabel: formatMultiLabel(sels.months, "All months", (m) => MONTH_NAMES[Number(m) - 1] || m),
         division: formatMultiLabel(sels.divisions, "All divisions"),
         reasonFocus,
+        reasonCodes,
         excludeNegatives: !!ds.excludeNegatives,
         reasonMax: ds.id === "logistics" && ds.reasonMax ? { ...ds.reasonMax } : null,
         underLines: stats.underLines,
@@ -5704,7 +5749,8 @@ ${parts}
         renderCoverageCharts(ds, covRows, rule);
       }
       applyCoverageLockMarks(ds);
-      schedulePersist(ds);
+      if (ds.id === "logistics") refresh(ds);
+      else schedulePersist(ds);
     }
 
     async function loadFile(ds, file) {
