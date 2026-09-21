@@ -4852,7 +4852,7 @@ ${parts}
         ? formatLogisticsBandsSummary(ds, rows || [])
         : formatAmountRule(rule);
       const bandSub = ds.id === "logistics"
-        ? "≤ max amount entered per reason code"
+        ? "≤ max(entered, all locks) per reason"
         : rule.mode === "between"
           ? "From ≤ |Amount| ≤ To"
           : "|Amount| ≤ thr";
