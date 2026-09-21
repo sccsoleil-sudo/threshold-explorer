@@ -2565,6 +2565,14 @@
         if (!includeControls && panel.classList.contains("controls-panel")) return;
         if (panel.classList.contains("priority-panel")) return;
         if (panel.hasAttribute("data-pdf-skip")) return;
+        // Logistics: never export "Live charts …" panels (reason code / by-division)
+        const inLogistics = !!panel.closest("#app-logistics, #view-logistics");
+        const titleEl =
+          panel.querySelector(":scope > .section-title") ||
+          panel.querySelector(":scope > .section-title-row .section-title");
+        const titleText = titleEl?.textContent?.replace(/\s+/g, " ").trim() || "";
+        if (inLogistics && /^Live charts\b/i.test(titleText)) return;
+        if (panel.querySelector(":scope > #charts-logistics, :scope > #charts-logistics-by-div")) return;
         if (panel.classList.contains("hidden")) return;
         const parentApp = panel.closest("[id^='app-']");
         if (parentApp && parentApp.classList.contains("hidden")) return;
@@ -3224,6 +3232,18 @@
         "script, style, input, button, .dl-btn, .btn-clear-all, .btn-remove-lock, [data-remove-lock], .msel, .pdf-btn, .pdf-opt"
       ).forEach((n) => n.remove());
       root.querySelectorAll("[data-pdf-skip]").forEach((n) => n.remove());
+      // Clones are detached from #app-logistics — match Logistics live-chart panels by title/id
+      root.querySelectorAll(".panel").forEach((panel) => {
+        const titleEl =
+          panel.querySelector(":scope > .section-title") ||
+          panel.querySelector(":scope > .section-title-row .section-title");
+        const titleText = titleEl?.textContent?.replace(/\s+/g, " ").trim() || "";
+        if (/^Live charts\b/i.test(titleText) && /reason code/i.test(titleText)) panel.remove();
+      });
+      root.querySelectorAll("#charts-logistics, #charts-logistics-by-div").forEach((n) => {
+        n.closest(".panel")?.remove();
+        n.remove();
+      });
       root.querySelectorAll(".upload-panel, .controls-panel").forEach((n) => {
         // honor same defaults as PDF unless checkboxes say include
         const includeUpload = !!$("pdf-include-upload")?.checked;
@@ -3237,18 +3257,25 @@
 
     function buildSearchableHtmlDocument(sections) {
       // sections: [{ title, ctx, htmlBody }]
-      const parts = sections.map((sec) => `
+      const parts = sections.map((sec) => {
+        const divName = (sec.ctx.division && sec.ctx.division !== "—")
+          ? sec.ctx.division
+          : "All divisions";
+        return `
   <section class="export-section">
     <header class="export-header">
       <h1>${escapeHtmlText(sec.title)}</h1>
-      <p class="division">${escapeHtmlText(sec.ctx.divisionLine || "Division: —")}</p>
-      <p class="band">${escapeHtmlText(sec.ctx.bandLine || "")}</p>
-      <p class="filter">${escapeHtmlText(sec.ctx.detailLine || "")}</p>
+      <div class="division" style="margin:0 0 10px;font-weight:800;font-size:20px;color:#ffffff;background:#2649B2;display:inline-block;border-radius:8px;padding:8px 14px;letter-spacing:0.02em;">
+        Division: ${escapeHtmlText(divName)}
+      </div>
+      <p class="band" style="margin:8px 0 2px;font-weight:700;font-size:15px;color:#1a1a2e;">${escapeHtmlText(sec.ctx.bandLine || "")}</p>
+      <p class="filter" style="margin:0 0 16px;color:#555;font-size:13px;">${escapeHtmlText(sec.ctx.detailLine || "")}</p>
     </header>
     <div class="export-body">
       ${sec.htmlBody}
     </div>
-  </section>`).join("\n");
+  </section>`;
+      }).join("\n");
 
       return `<!DOCTYPE html>
 <html lang="en">
@@ -3365,9 +3392,14 @@ ${parts}
         wrap.appendChild(clone);
       }
       sanitizeExportClone(wrap);
+      const ctx = currentExportContext(tabKey);
+      const divSuffix =
+        ctx.division && ctx.division !== "—" && ctx.division !== "All divisions"
+          ? ` · ${ctx.division}`
+          : "";
       return {
-        title: `Threshold Explorer — ${label}`,
-        ctx: currentExportContext(tabKey),
+        title: `Threshold Explorer — ${label}${divSuffix}`,
+        ctx,
         htmlBody: wrap.innerHTML,
       };
     }
