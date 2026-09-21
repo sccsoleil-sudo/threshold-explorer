@@ -3284,8 +3284,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Threshold Explorer export</title>
   <style>
-    body { font-family: Arial, Helvetica, sans-serif; margin: 0; padding: 24px; color: #1a1a2e; background: #f5f6fa; }
-    .export-section { background: #fff; border: 1px solid #e5e7f0; border-radius: 12px; padding: 20px 24px; margin-bottom: 28px; }
+    body { font-family: Arial, Helvetica, sans-serif; margin: 0; padding: 20px 24px 48px; color: #1a1a2e; background: #f5f6fa; }
+    .export-wrap { max-width: 1250px; margin: 0 auto; width: 100%; box-sizing: border-box; }
+    .export-section { background: #fff; border: 1px solid #e5e7f0; border-radius: 12px; padding: 20px 24px; margin-bottom: 18px; box-sizing: border-box; }
     .export-header h1 { margin: 0 0 8px; color: #2649B2; font-size: 22px; }
     .export-header .division {
       margin: 0 0 6px; font-weight: 800; font-size: 18px; color: #2649B2;
@@ -3294,13 +3295,14 @@
     }
     .export-header .band { margin: 8px 0 2px; font-weight: 700; font-size: 15px; color: #1a1a2e; }
     .export-header .filter { margin: 0 0 16px; color: #555; font-size: 13px; }
-    .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 18px; }
+    .export-body { max-width: 100%; overflow-x: auto; }
+    .kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 18px; }
     @media (max-width: 800px) { .kpis { grid-template-columns: 1fr 1fr; } }
-    .kpi { border: 1px solid #e5e7f0; border-radius: 10px; padding: 12px; background: #fafbff; }
+    .kpi { border: 1px solid #e5e7f0; border-radius: 10px; padding: 12px; background: #fafbff; min-width: 0; }
     .kpi .name { font-size: 11px; color: #777; font-weight: 700; text-transform: uppercase; }
     .kpi .value { font-size: 18px; font-weight: 700; color: #2649B2; margin-top: 4px; }
     .kpi .sub { font-size: 12px; color: #777; margin-top: 2px; }
-    .panel, .heat-card { border: 1px solid #eef0f6; border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+    .panel, .heat-card { border: 1px solid #eef0f6; border-radius: 12px; padding: 16px; margin-bottom: 16px; box-sizing: border-box; max-width: 100%; }
     .section-title { font-size: 16px; font-weight: 700; color: #2649B2; margin: 0 0 10px; }
     table.data, table.filter-heat-table { width: 100%; border-collapse: collapse; font-size: 12px; }
     table.data th, table.data td, table.filter-heat-table th, table.filter-heat-table td {
@@ -3321,7 +3323,7 @@
     @media (max-width: 900px) { .coverage-grid { grid-template-columns: 1fr; } }
     .charts { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 8px; }
     @media (max-width: 800px) { .charts { grid-template-columns: 1fr; } }
-    .chart-box { border: 1px solid #eee; border-radius: 10px; padding: 16px; }
+    .chart-box { border: 1px solid #eee; border-radius: 10px; padding: 16px; min-width: 0; box-sizing: border-box; }
     .chart-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; margin-bottom: 8px; }
     .chart-title { font-weight: 700; font-size: 15px; color: #2649B2; margin-bottom: 2px; }
     .chart-subtitle { font-size: 11px; color: #888; margin-bottom: 14px; }
@@ -3353,7 +3355,9 @@
   </style>
 </head>
 <body>
+<div class="export-wrap">
 ${parts}
+</div>
 </body>
 </html>`;
     }
