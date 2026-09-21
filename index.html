@@ -2416,69 +2416,140 @@
       return er.top - rr.top + root.scrollTop;
     }
 
-    /** Collect table (and large card) regions in canvas pixel space so page breaks avoid cutting them. */
+    /**
+     * Keep-together units for PDF slicing (canvas pixel coords).
+     * Prefer whole .panel blocks; if a panel is taller than a page, allow cuts
+     * only between locked cards / chart boxes / table rows — never after a
+     * lone section title or table header.
+     */
     function collectPdfKeepRegions(root, pxScale) {
       const regions = [];
-      const pushRegion = (el, withRows) => {
-        if (!el || el.closest?.(".upload-panel")) return;
-        if (el.offsetWidth < 2 || el.offsetHeight < 2) return;
-        const top = offsetTopInRoot(el, root) * pxScale;
-        const bottom = top + el.offsetHeight * pxScale;
-        const rowCuts = [];
-        if (withRows) {
-          el.querySelectorAll("tr").forEach((row) => {
-            if (row.offsetHeight < 1) return;
-            const rt = offsetTopInRoot(row, root) * pxScale;
-            rowCuts.push(rt);
-            rowCuts.push(rt + row.offsetHeight * pxScale);
-          });
-        }
-        regions.push({ top, bottom, rowCuts, kind: withRows ? "table" : "block" });
-      };
 
-      root.querySelectorAll("table").forEach((t) => pushRegion(t, true));
-      root.querySelectorAll(".heat-card, .chart-box, .coverage-box, .locked-card").forEach((el) => {
-        // Only keep-together if it does not already wrap a measured table (tables handle themselves)
-        if (el.querySelector("table")) return;
-        pushRegion(el, false);
+      root.querySelectorAll(".panel").forEach((panel) => {
+        if (panel.classList.contains("upload-panel")) return;
+        if (panel.offsetWidth < 2 || panel.offsetHeight < 2) return;
+
+        const top = offsetTopInRoot(panel, root) * pxScale;
+        const bottom = top + panel.offsetHeight * pxScale;
+        const rowCuts = [];
+
+        const addCut = (y) => {
+          if (Number.isFinite(y) && y > top + 2 && y < bottom - 2) rowCuts.push(y);
+        };
+
+        panel.querySelectorAll(".locked-card, .chart-box, .coverage-box, .heat-card").forEach((el) => {
+          if (el.offsetHeight < 2) return;
+          const et = offsetTopInRoot(el, root) * pxScale;
+          addCut(et); // before block
+          addCut(et + el.offsetHeight * pxScale); // after block
+        });
+
+        panel.querySelectorAll("table").forEach((table) => {
+          const rows = [...table.querySelectorAll("tr")].filter((r) => r.offsetHeight > 1);
+          rows.forEach((row, i) => {
+            const rt = offsetTopInRoot(row, root) * pxScale;
+            // Do not allow a cut between thead and the first body row
+            const isHead = row.parentElement?.tagName === "THEAD" || row.querySelector("th");
+            if (isHead && i === 0) return;
+            if (i === 1 && rows[0] && (rows[0].parentElement?.tagName === "THEAD" || rows[0].querySelector("th"))) {
+              // first cut allowed only after first body row (header + 1 data row stay together)
+              addCut(rt + row.offsetHeight * pxScale);
+              return;
+            }
+            addCut(rt);
+            addCut(rt + row.offsetHeight * pxScale);
+          });
+        });
+
+        rowCuts.sort((a, b) => a - b);
+
+        // Minimum useful chunk: title + header + first data row (or first locked card)
+        let minKeep = Math.min(bottom - top, 140 * pxScale);
+        const table = panel.querySelector("table");
+        if (table) {
+          const rows = [...table.querySelectorAll("tr")].filter((r) => r.offsetHeight > 1);
+          const keepN = Math.min(rows.length, 2); // thead + first body, or first two rows
+          if (keepN > 0) {
+            const last = rows[keepN - 1];
+            minKeep = Math.max(
+              minKeep,
+              offsetTopInRoot(last, root) * pxScale + last.offsetHeight * pxScale - top + 8 * pxScale
+            );
+          }
+        } else {
+          const title = panel.querySelector(".section-title, .section-title-row");
+          const first = panel.querySelector(".locked-card, .chart-box, .coverage-box, .empty");
+          if (title && first) {
+            minKeep = Math.max(
+              minKeep,
+              offsetTopInRoot(first, root) * pxScale + first.offsetHeight * pxScale - top + 8 * pxScale
+            );
+          } else if (title) {
+            minKeep = Math.max(minKeep, offsetTopInRoot(title, root) * pxScale + title.offsetHeight * pxScale - top + 48 * pxScale);
+          }
+        }
+
+        regions.push({ top, bottom, rowCuts, minKeep, kind: "panel" });
       });
+
       regions.sort((a, b) => a.top - b.top);
       return regions;
     }
 
     function choosePdfBreak(startY, maxH, canvasH, regions) {
-      const ideal = Math.min(startY + maxH, canvasH);
+      const spaceEnd = startY + maxH;
+      const ideal = Math.min(spaceEnd, canvasH);
       if (ideal >= canvasH - 1) return canvasH;
 
+      // Walk panels that intersect this page window
       for (const r of regions) {
-        // Would this ideal break cut through the region?
-        if (!(ideal > r.top + 1 && ideal < r.bottom - 1)) continue;
+        // Panel entirely below this page
+        if (r.top >= ideal) continue;
+        // Panel entirely above this page
+        if (r.bottom <= startY + 1) continue;
 
-        const regionH = r.bottom - r.top;
-        const space = startY + maxH;
+        const startsOnPage = r.top >= startY - 1;
+        const endsOnPage = r.bottom <= spaceEnd + 1;
+        const remainingForPanel = spaceEnd - Math.max(r.top, startY);
 
-        // Region fully on this page → break after it
-        if (r.top >= startY - 1 && r.bottom <= space + 1) {
-          return Math.min(Math.ceil(r.bottom), canvasH);
+        // Whole panel fits on this page — prefer breaking after it when ideal cuts past it
+        if (startsOnPage && endsOnPage) {
+          if (ideal > r.bottom) continue; // ideal is below panel; check later regions
+          // If ideal is inside or just after, OK to use after-panel
+          if (ideal >= r.top) return Math.min(Math.ceil(r.bottom), canvasH);
+          continue;
         }
 
-        // Region starts below current page start and does not fit → break before it
-        if (r.top > startY + 24 && r.top < ideal) {
-          // If moving it to next page still cannot fit whole region, keep going and use row cuts
-          if (regionH <= maxH) return Math.floor(r.top);
-        }
+        // Panel starts on this page but does not fit completely
+        if (startsOnPage && !endsOnPage) {
+          // Not enough room for title + first meaningful content → move whole panel to next page
+          if (remainingForPanel < r.minKeep && r.top > startY + 32) {
+            return Math.max(startY + 1, Math.floor(r.top));
+          }
 
-        // Region already started on (or before) this page — cut only at row edges for tables
-        if (r.rowCuts && r.rowCuts.length) {
+          // Enough room for a useful chunk — cut at last safe internal boundary
+          const minChunkEnd = Math.max(r.top, startY) + Math.min(r.minKeep, remainingForPanel);
           let best = null;
           for (const cut of r.rowCuts) {
-            if (cut > startY + 16 && cut <= space) best = cut;
+            if (cut >= minChunkEnd - 1 && cut <= spaceEnd) best = cut;
+          }
+          if (best != null) return Math.min(Math.round(best), canvasH);
+
+          // No row/card cut available: keep the minimum chunk, then break
+          if (remainingForPanel >= r.minKeep) {
+            return Math.min(Math.round(minChunkEnd), spaceEnd, canvasH);
+          }
+          if (r.top > startY + 32) return Math.floor(r.top);
+        }
+
+        // Panel continues from previous page — cut only at row/card boundaries
+        if (!startsOnPage && r.bottom > startY) {
+          let best = null;
+          for (const cut of r.rowCuts) {
+            if (cut > startY + 24 && cut <= spaceEnd) best = cut;
           }
           if (best != null) return Math.min(Math.round(best), canvasH);
         }
-
-        // Non-table block taller than a page: break before if possible, else force ideal
-        if (r.top > startY + 24) return Math.floor(r.top);
       }
 
       return ideal;
@@ -2493,7 +2564,7 @@
       const pageHeight = pdf.internal.pageSize.getHeight();
       const marginX = 28;
       const marginTop = 48;
-      const marginBottom = 28;
+      const marginBottom = 36;
       const usableWidth = pageWidth - marginX * 2;
       const usableHeight = pageHeight - marginTop - marginBottom;
       const pdfScale = usableWidth / canvas.width;
@@ -2505,7 +2576,14 @@
         if (pageIndex > 0) pdf.addPage();
 
         let endY = choosePdfBreak(y, pageSlicePx, canvas.height, keepRegions || []);
-        if (endY <= y + 8) endY = Math.min(y + pageSlicePx, canvas.height);
+        // Guard against zero-progress loops
+        if (endY <= y + 4) {
+          endY = Math.min(y + pageSlicePx, canvas.height);
+        }
+        // Avoid a nearly-empty trailing slice at the end of a page when a panel was deferred
+        if (endY - y < 20 && endY < canvas.height) {
+          endY = Math.min(y + pageSlicePx, canvas.height);
+        }
         const sliceH = Math.max(1, endY - y);
 
         const slice = document.createElement("canvas");
@@ -2580,11 +2658,14 @@
             node.hasAttribute?.("data-dl-el-btn") ||
             node.classList?.contains("pdf-btn") ||
             node.classList?.contains("pdf-opt") ||
+            node.classList?.contains("btn-clear-all") ||
             node.classList?.contains("topbar") ||
             (!includeUpload && node.classList?.contains("upload-panel")),
         });
 
-        const pxScale = canvas.width / Math.max(1, view.scrollWidth || view.offsetWidth);
+        // Match canvas pixels to layout width used by html2canvas
+        const layoutW = Math.max(view.offsetWidth, view.clientWidth, 1);
+        const pxScale = canvas.width / layoutW;
         const keepRegions = collectPdfKeepRegions(view, pxScale);
         const pdf = buildPdfFromCanvas(canvas, title, keepRegions);
         pdf.save(stampPdfFilename(tabKey));
