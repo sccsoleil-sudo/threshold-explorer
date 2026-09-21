@@ -1769,7 +1769,7 @@
           <div class="footnote">Bar width scaled to sqrt(value); labels show Threshold ÷ Total %. Accent color matches COOP one-pager (#B55CE6).</div>
         </div>
 
-        <div class="panel">
+        <div class="panel" data-pdf-block="locks">
           <div class="section-title-row">
             <div class="section-title">Locked thresholds</div>
             <button type="button" class="btn-clear-all" data-clear-locks="coop">Clear all locks</button>
@@ -1778,14 +1778,14 @@
           <div id="locks-coop" class="locked-grid"></div>
         </div>
 
-        <div class="panel">
+        <div class="panel" data-pdf-block="table">
           <div class="section-title">Detail table — Division × Reason Code</div>
           <div style="overflow:auto">
             <table class="data" id="table-coop"></table>
           </div>
         </div>
 
-        <div class="panel">
+        <div class="panel" data-pdf-block="table">
           <div class="section-title">Top clients — Customer × Division</div>
           <div style="overflow:auto">
             <table class="data clients-matrix" id="table-clients-coop"></table>
@@ -1926,7 +1926,7 @@
           <div class="footnote">One pair of charts per selected reason code, broken down by division (CPD / PPD / LPD / LDB).</div>
         </div>
 
-        <div class="panel">
+        <div class="panel" data-pdf-block="locks">
           <div class="section-title-row">
             <div class="section-title">Locked thresholds</div>
             <button type="button" class="btn-clear-all" data-clear-locks="logistics">Clear all locks</button>
@@ -1935,14 +1935,14 @@
           <div id="locks-logistics" class="locked-grid"></div>
         </div>
 
-        <div class="panel">
+        <div class="panel" data-pdf-block="table">
           <div class="section-title">Detail table — Division × Reason Code</div>
           <div style="overflow:auto">
             <table class="data" id="table-logistics"></table>
           </div>
         </div>
 
-        <div class="panel">
+        <div class="panel" data-pdf-block="table">
           <div class="section-title">Top clients — Customer × Division</div>
           <div style="overflow:auto">
             <table class="data clients-matrix" id="table-clients-logistics"></table>
@@ -2410,182 +2410,200 @@
       return `threshold-explorer-${tabKey}-${stamp}.pdf`;
     }
 
-    function offsetTopInRoot(el, root) {
-      const er = el.getBoundingClientRect();
-      const rr = root.getBoundingClientRect();
-      return er.top - rr.top + root.scrollTop;
+    function pdfIgnoreNode(node) {
+      return !!(
+        node.classList?.contains("dl-btn") ||
+        node.hasAttribute?.("data-dl-el-btn") ||
+        node.classList?.contains("pdf-btn") ||
+        node.classList?.contains("pdf-opt") ||
+        node.classList?.contains("btn-clear-all") ||
+        node.classList?.contains("topbar")
+      );
     }
 
-    /**
-     * Keep-together units for PDF slicing (canvas pixel coords).
-     * Prefer whole .panel blocks; if a panel is taller than a page, allow cuts
-     * only between locked cards / chart boxes / table rows — never after a
-     * lone section title or table header.
-     */
-    function collectPdfKeepRegions(root, pxScale) {
-      const regions = [];
-
-      root.querySelectorAll(".panel").forEach((panel) => {
-        if (panel.classList.contains("upload-panel")) return;
-        if (panel.offsetWidth < 2 || panel.offsetHeight < 2) return;
-
-        const top = offsetTopInRoot(panel, root) * pxScale;
-        const bottom = top + panel.offsetHeight * pxScale;
-        const rowCuts = [];
-
-        const addCut = (y) => {
-          if (Number.isFinite(y) && y > top + 2 && y < bottom - 2) rowCuts.push(y);
-        };
-
-        panel.querySelectorAll(".locked-card, .chart-box, .coverage-box, .heat-card").forEach((el) => {
-          if (el.offsetHeight < 2) return;
-          const et = offsetTopInRoot(el, root) * pxScale;
-          addCut(et); // before block
-          addCut(et + el.offsetHeight * pxScale); // after block
+    /** Expand overflow:auto wrappers so full tables/charts are painted. */
+    function expandOverflowForCapture(root) {
+      const restored = [];
+      const nodes = [root, ...root.querySelectorAll("*")];
+      for (const node of nodes) {
+        if (!(node instanceof HTMLElement)) continue;
+        const cs = window.getComputedStyle(node);
+        const needs =
+          cs.overflow === "auto" ||
+          cs.overflow === "scroll" ||
+          cs.overflowY === "auto" ||
+          cs.overflowY === "scroll" ||
+          cs.overflowX === "auto" ||
+          cs.overflowX === "scroll";
+        if (!needs) continue;
+        restored.push({
+          node,
+          overflow: node.style.overflow,
+          overflowX: node.style.overflowX,
+          overflowY: node.style.overflowY,
+          maxHeight: node.style.maxHeight,
+          height: node.style.height,
         });
-
-        panel.querySelectorAll("table").forEach((table) => {
-          const rows = [...table.querySelectorAll("tr")].filter((r) => r.offsetHeight > 1);
-          rows.forEach((row, i) => {
-            const rt = offsetTopInRoot(row, root) * pxScale;
-            // Do not allow a cut between thead and the first body row
-            const isHead = row.parentElement?.tagName === "THEAD" || row.querySelector("th");
-            if (isHead && i === 0) return;
-            if (i === 1 && rows[0] && (rows[0].parentElement?.tagName === "THEAD" || rows[0].querySelector("th"))) {
-              // first cut allowed only after first body row (header + 1 data row stay together)
-              addCut(rt + row.offsetHeight * pxScale);
-              return;
-            }
-            addCut(rt);
-            addCut(rt + row.offsetHeight * pxScale);
-          });
-        });
-
-        rowCuts.sort((a, b) => a - b);
-
-        // Minimum useful chunk: title + header + first data row (or first locked card)
-        let minKeep = Math.min(bottom - top, 140 * pxScale);
-        const table = panel.querySelector("table");
-        if (table) {
-          const rows = [...table.querySelectorAll("tr")].filter((r) => r.offsetHeight > 1);
-          const keepN = Math.min(rows.length, 2); // thead + first body, or first two rows
-          if (keepN > 0) {
-            const last = rows[keepN - 1];
-            minKeep = Math.max(
-              minKeep,
-              offsetTopInRoot(last, root) * pxScale + last.offsetHeight * pxScale - top + 8 * pxScale
-            );
-          }
-        } else {
-          const title = panel.querySelector(".section-title, .section-title-row");
-          const first = panel.querySelector(".locked-card, .chart-box, .coverage-box, .empty");
-          if (title && first) {
-            minKeep = Math.max(
-              minKeep,
-              offsetTopInRoot(first, root) * pxScale + first.offsetHeight * pxScale - top + 8 * pxScale
-            );
-          } else if (title) {
-            minKeep = Math.max(minKeep, offsetTopInRoot(title, root) * pxScale + title.offsetHeight * pxScale - top + 48 * pxScale);
-          }
+        node.style.overflow = "visible";
+        node.style.overflowX = "visible";
+        node.style.overflowY = "visible";
+        node.style.maxHeight = "none";
+      }
+      return () => {
+        for (const r of restored) {
+          r.node.style.overflow = r.overflow;
+          r.node.style.overflowX = r.overflowX;
+          r.node.style.overflowY = r.overflowY;
+          r.node.style.maxHeight = r.maxHeight;
+          r.node.style.height = r.height;
         }
-
-        regions.push({ top, bottom, rowCuts, minKeep, kind: "panel" });
-      });
-
-      regions.sort((a, b) => a.top - b.top);
-      return regions;
+      };
     }
 
-    function choosePdfBreak(startY, maxH, canvasH, regions) {
-      const spaceEnd = startY + maxH;
-      const ideal = Math.min(spaceEnd, canvasH);
-      if (ideal >= canvasH - 1) return canvasH;
+    function getPdfExportBlocks(view, includeUpload) {
+      const blocks = [];
+      const seen = new Set();
+      const add = (el, mode) => {
+        if (!el || seen.has(el)) return;
+        if (el.offsetWidth < 2 || el.offsetHeight < 2) return;
+        if (el.classList.contains("hidden")) return;
+        seen.add(el);
+        blocks.push({ el, mode });
+      };
 
-      // Walk panels that intersect this page window
-      for (const r of regions) {
-        // Panel entirely below this page
-        if (r.top >= ideal) continue;
-        // Panel entirely above this page
-        if (r.bottom <= startY + 1) continue;
-
-        const startsOnPage = r.top >= startY - 1;
-        const endsOnPage = r.bottom <= spaceEnd + 1;
-        const remainingForPanel = spaceEnd - Math.max(r.top, startY);
-
-        // Whole panel fits on this page — prefer breaking after it when ideal cuts past it
-        if (startsOnPage && endsOnPage) {
-          if (ideal > r.bottom) continue; // ideal is below panel; check later regions
-          // If ideal is inside or just after, OK to use after-panel
-          if (ideal >= r.top) return Math.min(Math.ceil(r.bottom), canvasH);
-          continue;
-        }
-
-        // Panel starts on this page but does not fit completely
-        if (startsOnPage && !endsOnPage) {
-          // Not enough room for title + first meaningful content → move whole panel to next page
-          if (remainingForPanel < r.minKeep && r.top > startY + 32) {
-            return Math.max(startY + 1, Math.floor(r.top));
-          }
-
-          // Enough room for a useful chunk — cut at last safe internal boundary
-          const minChunkEnd = Math.max(r.top, startY) + Math.min(r.minKeep, remainingForPanel);
-          let best = null;
-          for (const cut of r.rowCuts) {
-            if (cut >= minChunkEnd - 1 && cut <= spaceEnd) best = cut;
-          }
-          if (best != null) return Math.min(Math.round(best), canvasH);
-
-          // No row/card cut available: keep the minimum chunk, then break
-          if (remainingForPanel >= r.minKeep) {
-            return Math.min(Math.round(minChunkEnd), spaceEnd, canvasH);
-          }
-          if (r.top > startY + 32) return Math.floor(r.top);
-        }
-
-        // Panel continues from previous page — cut only at row/card boundaries
-        if (!startsOnPage && r.bottom > startY) {
-          let best = null;
-          for (const cut of r.rowCuts) {
-            if (cut > startY + 24 && cut <= spaceEnd) best = cut;
-          }
-          if (best != null) return Math.min(Math.round(best), canvasH);
-        }
+      // Priority tab: export heat-cards individually inside the big panel
+      const prio = view.id === "view-priority" ? view.querySelector(".priority-panel") : null;
+      if (prio) {
+        prio.querySelectorAll(":scope > .heat-card").forEach((card) => {
+          const mode = card.querySelector("table") ? "table" : "whole";
+          add(card, mode);
+        });
+        if (blocks.length) return blocks;
       }
 
-      return ideal;
+      view.querySelectorAll(".panel").forEach((panel) => {
+        if (!includeUpload && panel.classList.contains("upload-panel")) return;
+        if (panel.classList.contains("priority-panel")) return;
+        if (panel.classList.contains("hidden")) return;
+        const parentApp = panel.closest("[id^='app-']");
+        if (parentApp && parentApp.classList.contains("hidden")) return;
+
+        const kind = panel.getAttribute("data-pdf-block");
+        if (kind === "locks") add(panel, "locks");
+        else if (kind === "table" || panel.querySelector("table.data, table.filter-heat-table")) add(panel, "table");
+        else add(panel, "whole");
+      });
+      return blocks;
     }
 
-    function buildPdfFromCanvas(canvas, title, keepRegions) {
-      const JsPDF = window.jspdf?.jsPDF;
-      if (!JsPDF) throw new Error("jsPDF failed to load");
+    async function captureElToCanvas(el) {
+      const restore = expandOverflowForCapture(el);
+      try {
+        await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+        return await html2canvas(el, {
+          backgroundColor: "#ffffff",
+          scale: 2,
+          logging: false,
+          useCORS: true,
+          allowTaint: true,
+          scrollX: 0,
+          scrollY: 0,
+          windowWidth: Math.max(document.documentElement.scrollWidth, el.scrollWidth + 40),
+          ignoreElements: pdfIgnoreNode,
+          onclone: (_doc, cloned) => {
+            cloned.querySelectorAll(".dl-btn, .btn-clear-all, .pdf-btn, .pdf-opt, [data-remove-lock]").forEach((n) => n.remove());
+            cloned.querySelectorAll("*").forEach((node) => {
+              if (!node.style) return;
+              node.style.overflow = "visible";
+              node.style.overflowX = "visible";
+              node.style.overflowY = "visible";
+              if (node.style.maxHeight) node.style.maxHeight = "none";
+            });
+          },
+        });
+      } finally {
+        restore();
+      }
+    }
 
-      const pdf = new JsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
-      const pageWidth = pdf.internal.pageSize.getWidth();
-      const pageHeight = pdf.internal.pageSize.getHeight();
-      const marginX = 28;
-      const marginTop = 48;
-      const marginBottom = 36;
-      const usableWidth = pageWidth - marginX * 2;
-      const usableHeight = pageHeight - marginTop - marginBottom;
-      const pdfScale = usableWidth / canvas.width;
-      const pageSlicePx = Math.max(1, Math.floor(usableHeight / pdfScale));
+    function writePdfPageHeader(pdf, title, pageIndex, pageWidth, marginX) {
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(11);
+      pdf.setTextColor(38, 73, 178);
+      pdf.text(title, marginX, 28);
+      pdf.setFont("helvetica", "normal");
+      pdf.setFontSize(8);
+      pdf.setTextColor(120, 120, 120);
+      pdf.text(`Page ${pageIndex}`, pageWidth - marginX, 28, { align: "right" });
+    }
+
+    function canvasToJpeg(canvas, quality) {
+      return canvas.toDataURL("image/jpeg", quality ?? 0.92);
+    }
+
+    /** Draw a captured canvas onto the PDF as one uncut block (scale down to fit page if needed). */
+    function addWholeImage(pdf, state, canvas, preferNewPage) {
+      const { marginX, marginTop, marginBottom, usableWidth, usableHeight, pageWidth, pageHeight, title } = state;
+      let imgW = usableWidth;
+      let imgH = (canvas.height * imgW) / canvas.width;
+
+      // Keep block whole — scale to fit a single page if taller than the page
+      if (imgH > usableHeight) {
+        const s = usableHeight / imgH;
+        imgW *= s;
+        imgH *= s;
+      }
+
+      if (state.pageIndex === 0) {
+        state.pageIndex = 1;
+        writePdfPageHeader(pdf, title, state.pageIndex, pageWidth, marginX);
+        state.y = marginTop;
+      } else if (preferNewPage || state.y + imgH > pageHeight - marginBottom) {
+        pdf.addPage();
+        state.pageIndex += 1;
+        writePdfPageHeader(pdf, title, state.pageIndex, pageWidth, marginX);
+        state.y = marginTop;
+      }
+
+      pdf.addImage(canvasToJpeg(canvas), "JPEG", marginX, state.y, imgW, imgH);
+      state.y += imgH + 14;
+    }
+
+    /** Paginate a tall table panel using row boundaries inside that panel only. */
+    function addTableImagePaginated(pdf, state, el, canvas) {
+      const { marginX, marginTop, marginBottom, usableWidth, usableHeight, pageWidth, pageHeight, title } = state;
+      const pxScale = canvas.width / Math.max(el.offsetWidth, 1);
+      const pageSlicePx = Math.max(1, Math.floor((usableHeight * canvas.width) / usableWidth));
+
+      const cuts = [0];
+      const rows = [...el.querySelectorAll("table tr")].filter((r) => r.offsetHeight > 1);
+      rows.forEach((row, i) => {
+        const isHead = row.parentElement?.tagName === "THEAD" || !!row.querySelector("th");
+        // First allowed cut is after header + first body row
+        if (i === 0 && isHead) return;
+        if (i === 1) {
+          const y = (offsetTopRelative(row, el) + row.offsetHeight) * pxScale;
+          cuts.push(Math.min(canvas.height, Math.round(y)));
+          return;
+        }
+        const yTop = offsetTopRelative(row, el) * pxScale;
+        cuts.push(Math.min(canvas.height, Math.round(yTop)));
+        cuts.push(Math.min(canvas.height, Math.round(yTop + row.offsetHeight * pxScale)));
+      });
+      cuts.push(canvas.height);
+      const uniq = [...new Set(cuts)].filter((y) => y >= 0 && y <= canvas.height).sort((a, b) => a - b);
 
       let y = 0;
-      let pageIndex = 0;
       while (y < canvas.height - 1) {
-        if (pageIndex > 0) pdf.addPage();
-
-        let endY = choosePdfBreak(y, pageSlicePx, canvas.height, keepRegions || []);
-        // Guard against zero-progress loops
-        if (endY <= y + 4) {
-          endY = Math.min(y + pageSlicePx, canvas.height);
+        const ideal = Math.min(y + pageSlicePx, canvas.height);
+        let end = ideal;
+        // Pick last cut <= ideal that leaves at least a little content; never cut before first body if still at top
+        for (const c of uniq) {
+          if (c > y + 24 && c <= ideal) end = c;
         }
-        // Avoid a nearly-empty trailing slice at the end of a page when a panel was deferred
-        if (endY - y < 20 && endY < canvas.height) {
-          endY = Math.min(y + pageSlicePx, canvas.height);
-        }
-        const sliceH = Math.max(1, endY - y);
+        if (end <= y + 8) end = ideal;
 
+        const sliceH = Math.max(1, end - y);
         const slice = document.createElement("canvas");
         slice.width = canvas.width;
         slice.height = sliceH;
@@ -2594,22 +2612,31 @@
         ctx.fillRect(0, 0, slice.width, slice.height);
         ctx.drawImage(canvas, 0, y, canvas.width, sliceH, 0, 0, canvas.width, sliceH);
 
-        const imgH = sliceH * pdfScale;
-        pdf.setFont("helvetica", "bold");
-        pdf.setFontSize(11);
-        pdf.setTextColor(38, 73, 178);
-        pdf.text(title, marginX, 28);
-        pdf.setFont("helvetica", "normal");
-        pdf.setFontSize(8);
-        pdf.setTextColor(120, 120, 120);
-        pdf.text(`Page ${pageIndex + 1}`, pageWidth - marginX, 28, { align: "right" });
-        pdf.addImage(slice.toDataURL("image/jpeg", 0.92), "JPEG", marginX, marginTop, usableWidth, imgH);
+        const imgW = usableWidth;
+        const imgH = (sliceH * imgW) / canvas.width;
 
-        y = endY;
-        pageIndex += 1;
-        if (pageIndex > 60) break;
+        if (state.pageIndex === 0) {
+          state.pageIndex = 1;
+          writePdfPageHeader(pdf, title, state.pageIndex, pageWidth, marginX);
+          state.y = marginTop;
+        } else if (state.y + imgH > pageHeight - marginBottom) {
+          pdf.addPage();
+          state.pageIndex += 1;
+          writePdfPageHeader(pdf, title, state.pageIndex, pageWidth, marginX);
+          state.y = marginTop;
+        }
+
+        pdf.addImage(canvasToJpeg(slice), "JPEG", marginX, state.y, imgW, imgH);
+        state.y += imgH + 10;
+        y = end;
+        if (state.pageIndex > 80) break;
       }
-      return pdf;
+    }
+
+    function offsetTopRelative(el, root) {
+      const er = el.getBoundingClientRect();
+      const rr = root.getBoundingClientRect();
+      return er.top - rr.top;
     }
 
     async function downloadCurrentPagePdf(btn) {
@@ -2619,7 +2646,8 @@
         alert("PDF export needs html2canvas. Check your network connection and reload.");
         return;
       }
-      if (!window.jspdf?.jsPDF) {
+      const JsPDF = window.jspdf?.jsPDF;
+      if (!JsPDF) {
         alert("PDF export needs jsPDF. Check your network connection and reload.");
         return;
       }
@@ -2641,33 +2669,69 @@
       try {
         const prevScrollY = window.scrollY;
         window.scrollTo(0, 0);
-        view.scrollTop = 0;
         await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
 
-        const captureScale = Math.min(2, window.devicePixelRatio || 1.5);
-        const canvas = await html2canvas(view, {
-          backgroundColor: "#ffffff",
-          scale: captureScale,
-          logging: false,
-          useCORS: true,
-          windowWidth: document.documentElement.scrollWidth,
-          scrollX: 0,
-          scrollY: -window.scrollY,
-          ignoreElements: (node) =>
-            node.classList?.contains("dl-btn") ||
-            node.hasAttribute?.("data-dl-el-btn") ||
-            node.classList?.contains("pdf-btn") ||
-            node.classList?.contains("pdf-opt") ||
-            node.classList?.contains("btn-clear-all") ||
-            node.classList?.contains("topbar") ||
-            (!includeUpload && node.classList?.contains("upload-panel")),
-        });
+        const blocks = getPdfExportBlocks(view, includeUpload);
+        if (!blocks.length) {
+          alert("Nothing to export on this tab yet.");
+          return;
+        }
 
-        // Match canvas pixels to layout width used by html2canvas
-        const layoutW = Math.max(view.offsetWidth, view.clientWidth, 1);
-        const pxScale = canvas.width / layoutW;
-        const keepRegions = collectPdfKeepRegions(view, pxScale);
-        const pdf = buildPdfFromCanvas(canvas, title, keepRegions);
+        const pdf = new JsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
+        const pageWidth = pdf.internal.pageSize.getWidth();
+        const pageHeight = pdf.internal.pageSize.getHeight();
+        const marginX = 28;
+        const marginTop = 48;
+        const marginBottom = 36;
+        const state = {
+          title,
+          pageIndex: 0,
+          y: marginTop,
+          marginX,
+          marginTop,
+          marginBottom,
+          usableWidth: pageWidth - marginX * 2,
+          usableHeight: pageHeight - marginTop - marginBottom,
+          pageWidth,
+          pageHeight,
+        };
+
+        for (let i = 0; i < blocks.length; i++) {
+          const { el, mode } = blocks[i];
+          if (btn) btn.textContent = `Generating PDF… ${i + 1}/${blocks.length}`;
+          // Ensure element is in view for Windows / Chrome painting
+          el.scrollIntoView({ block: "nearest" });
+          await new Promise((r) => setTimeout(r, 30));
+
+          const canvas = await captureElToCanvas(el);
+          if (!canvas || canvas.width < 2 || canvas.height < 2) continue;
+
+          if (mode === "locks" || mode === "whole") {
+            // Locks always start on a fresh page when prior content exists; never sliced
+            const preferNew = mode === "locks" && state.pageIndex > 0 && state.y > state.marginTop + 20;
+            addWholeImage(pdf, state, canvas, preferNew);
+          } else if (mode === "table") {
+            const imgH = (canvas.height * state.usableWidth) / canvas.width;
+            if (imgH <= state.usableHeight * 0.98) {
+              addWholeImage(pdf, state, canvas, false);
+            } else {
+              // Start table on a fresh page, then split only between rows
+              if (state.pageIndex > 0 && state.y > state.marginTop + 8) {
+                pdf.addPage();
+                state.pageIndex += 1;
+                writePdfPageHeader(pdf, title, state.pageIndex, pageWidth, marginX);
+                state.y = marginTop;
+              }
+              addTableImagePaginated(pdf, state, el, canvas);
+            }
+          } else {
+            addWholeImage(pdf, state, canvas, false);
+          }
+        }
+
+        if (state.pageIndex === 0) {
+          writePdfPageHeader(pdf, title, 1, pageWidth, marginX);
+        }
         pdf.save(stampPdfFilename(tabKey));
         window.scrollTo(0, prevScrollY);
       } catch (err) {
