@@ -2577,19 +2577,25 @@
       return blocks;
     }
 
-    /** Division + filters for PDF / PNG headers — matches Amount band + Filter KPI cards. */
+    /** Division + filters for PDF / PNG / HTML headers — Division highlighted first. */
     function currentExportContext(tabKey) {
       const tab = tabKey || activeTabKey();
       if (tab === "priority") {
         return {
           division: "—",
-          divisionLine: "Amount band: —",
+          divisionLine: "Division: —",
+          bandLine: "Amount band: —",
           detailLine: "Filter: Priority / Urgency explorer",
         };
       }
       const ds = datasets[tab];
       if (!ds) {
-        return { division: "—", divisionLine: "Amount band: —", detailLine: "Filter: —" };
+        return {
+          division: "—",
+          divisionLine: "Division: —",
+          bandLine: "Amount band: —",
+          detailLine: "Filter: —",
+        };
       }
       const years = selectedValues(`year-${ds.id}`);
       const months = selectedValues(`month-${ds.id}`);
@@ -2603,12 +2609,13 @@
         (m) => MONTH_NAMES[Number(m) - 1] || m
       );
       const bandLabel = formatAmountRule(rule);
-      let filterSub = `${month} · ${division}`;
+      let filterSub = `${year} · ${month}`;
       if (ds.excludeNegatives) filterSub += " · no negatives";
       return {
         division,
-        divisionLine: `Amount band: ${bandLabel}`,
-        detailLine: `Filter: ${year} · ${filterSub}`,
+        divisionLine: `Division: ${division}`,
+        bandLine: `Amount band: ${bandLabel}`,
+        detailLine: `Filter: ${filterSub}`,
       };
     }
 
@@ -2616,49 +2623,63 @@
       pdf.setFont("helvetica", "bold");
       pdf.setFontSize(11);
       pdf.setTextColor(38, 73, 178);
-      pdf.text(title, marginX, 22);
+      pdf.text(title, marginX, 20);
+
+      // Highlighted Division line
       pdf.setFont("helvetica", "bold");
-      pdf.setFontSize(10);
+      pdf.setFontSize(12);
+      pdf.setTextColor(38, 73, 178);
+      pdf.text(ctx?.divisionLine || "Division: —", marginX, 34);
+
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(9);
       pdf.setTextColor(26, 26, 46);
-      pdf.text(ctx?.divisionLine || "Division: —", marginX, 36);
+      pdf.text(ctx?.bandLine || "Amount band: —", marginX, 46);
+
       if (ctx?.detailLine) {
         pdf.setFont("helvetica", "normal");
         pdf.setFontSize(8);
         pdf.setTextColor(100, 100, 110);
-        pdf.text(ctx.detailLine, marginX, 48);
+        pdf.text(ctx.detailLine, marginX, 56);
       }
+
       pdf.setFont("helvetica", "normal");
       pdf.setFontSize(8);
       pdf.setTextColor(120, 120, 120);
-      pdf.text(`Page ${pageIndex}`, pageWidth - marginX, 22, { align: "right" });
+      pdf.text(`Page ${pageIndex}`, pageWidth - marginX, 20, { align: "right" });
     }
 
     /** Stamp Division / filter context onto a PNG canvas before download. */
     function stampExportHeaderOnCanvas(canvas, title, ctx) {
       const padX = 24;
-      const padY = 16;
+      const padY = 14;
       const line1 = title || "Threshold Explorer";
       const line2 = ctx?.divisionLine || "Division: —";
-      const line3 = ctx?.detailLine || "";
-      const headerH = line3 ? 88 : 68;
+      const line3 = ctx?.bandLine || "Amount band: —";
+      const line4 = ctx?.detailLine || "";
+      const headerH = line4 ? 110 : 90;
       const out = document.createElement("canvas");
       out.width = canvas.width;
       out.height = canvas.height + headerH;
       const g = out.getContext("2d");
       g.fillStyle = "#ffffff";
       g.fillRect(0, 0, out.width, out.height);
-      g.fillStyle = "#f5f6fa";
+      g.fillStyle = "#EEF1FB";
       g.fillRect(0, 0, out.width, headerH);
       g.fillStyle = "#2649B2";
+      g.font = "bold 26px Arial, Helvetica, sans-serif";
+      g.fillText(line1, padX, padY + 24);
+      // Division — highlighted
+      g.fillStyle = "#2649B2";
       g.font = "bold 28px Arial, Helvetica, sans-serif";
-      g.fillText(line1, padX, padY + 28);
+      g.fillText(line2, padX, padY + 54);
       g.fillStyle = "#1a1a2e";
-      g.font = "bold 24px Arial, Helvetica, sans-serif";
-      g.fillText(line2, padX, padY + 56);
-      if (line3) {
+      g.font = "bold 20px Arial, Helvetica, sans-serif";
+      g.fillText(line3, padX, padY + 78);
+      if (line4) {
         g.fillStyle = "#666";
-        g.font = "18px Arial, Helvetica, sans-serif";
-        g.fillText(line3, padX, padY + 78);
+        g.font = "17px Arial, Helvetica, sans-serif";
+        g.fillText(line4, padX, padY + 98);
       }
       g.drawImage(canvas, 0, headerH);
       return out;
@@ -2818,7 +2839,7 @@
       const pageWidth = pdf.internal.pageSize.getWidth();
       const pageHeight = pdf.internal.pageSize.getHeight();
       const marginX = 24;
-      const marginTop = 58;
+      const marginTop = 70;
       const marginBottom = 28;
       return {
         pdf,
@@ -3220,7 +3241,8 @@
   <section class="export-section">
     <header class="export-header">
       <h1>${escapeHtmlText(sec.title)}</h1>
-      <p class="band">${escapeHtmlText(sec.ctx.divisionLine || "")}</p>
+      <p class="division">${escapeHtmlText(sec.ctx.divisionLine || "Division: —")}</p>
+      <p class="band">${escapeHtmlText(sec.ctx.bandLine || "")}</p>
       <p class="filter">${escapeHtmlText(sec.ctx.detailLine || "")}</p>
     </header>
     <div class="export-body">
@@ -3237,8 +3259,13 @@
   <style>
     body { font-family: Arial, Helvetica, sans-serif; margin: 0; padding: 24px; color: #1a1a2e; background: #f5f6fa; }
     .export-section { background: #fff; border: 1px solid #e5e7f0; border-radius: 12px; padding: 20px 24px; margin-bottom: 28px; }
-    .export-header h1 { margin: 0 0 6px; color: #2649B2; font-size: 22px; }
-    .export-header .band { margin: 0 0 2px; font-weight: 700; font-size: 15px; }
+    .export-header h1 { margin: 0 0 8px; color: #2649B2; font-size: 22px; }
+    .export-header .division {
+      margin: 0 0 6px; font-weight: 800; font-size: 18px; color: #2649B2;
+      display: inline-block; background: #EEF1FB; border: 1px solid #c5ceed;
+      border-radius: 8px; padding: 6px 12px;
+    }
+    .export-header .band { margin: 8px 0 2px; font-weight: 700; font-size: 15px; color: #1a1a2e; }
     .export-header .filter { margin: 0 0 16px; color: #555; font-size: 13px; }
     .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 18px; }
     @media (max-width: 800px) { .kpis { grid-template-columns: 1fr 1fr; } }
