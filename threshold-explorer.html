@@ -8,6 +8,7 @@
   <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
   <style>
     * { box-sizing: border-box; }
     body {
@@ -25,6 +26,14 @@
       top: 0;
       z-index: 20;
     }
+    .topbar-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    .topbar-head-text { flex: 1; min-width: 220px; }
     .topbar h1 {
       margin: 0 0 4px;
       font-size: 22px;
@@ -34,6 +43,31 @@
       margin: 0 0 14px;
       color: #555;
       font-size: 13px;
+    }
+    .topbar-actions {
+      display: flex;
+      gap: 8px;
+      flex-shrink: 0;
+      padding-top: 2px;
+    }
+    button.pdf-btn {
+      appearance: none;
+      border: 1px solid #2649B2;
+      background: #2649B2;
+      color: #fff;
+      border-radius: 10px;
+      padding: 10px 16px;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      font-family: inherit;
+      white-space: nowrap;
+    }
+    button.pdf-btn:hover { filter: brightness(1.06); }
+    button.pdf-btn:disabled {
+      opacity: 0.65;
+      cursor: wait;
+      filter: none;
     }
     .tabs {
       display: flex;
@@ -1231,26 +1265,30 @@
       line-height: 1.45;
     }
     .how-read b { color: #1a1a2e; }
-    .decision-layout {
+    .decision-weights-below .decision-weight-grid {
       display: grid;
-      grid-template-columns: 260px 1fr;
-      gap: 16px;
-      margin-top: 16px;
-      align-items: start;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px 28px;
+      margin-bottom: 14px;
     }
-    @media (max-width: 900px) {
-      .decision-layout { grid-template-columns: 1fr; }
+    @media (max-width: 700px) {
+      .decision-weights-below .decision-weight-grid { grid-template-columns: 1fr; }
     }
-    .decision-sidebar {
-      background: #f5f6fa;
-      border: 1px solid #e5e7f0;
-      border-radius: 14px;
-      padding: 16px;
+    .decision-mix-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: stretch;
     }
-    .decision-sidebar h4 {
-      margin: 0 0 12px;
-      font-size: 14px;
-      color: #1a1a2e;
+    .decision-mix-row .decision-mix { flex: 1; min-width: 180px; margin: 0; }
+    .decision-mix-row .action { align-self: center; }
+    .decision-score-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px 18px;
+    }
+    @media (max-width: 800px) {
+      .decision-score-grid { grid-template-columns: 1fr; }
     }
     .decision-weight-row {
       margin-bottom: 14px;
@@ -1569,8 +1607,15 @@
 </head>
 <body>
   <div class="topbar">
-    <h1>Auto Credit/Write Off Threshold Explorer</h1>
-    <p class="sub">Interactive threshold playbook with the same chart style as the COOP / Logistics one-pagers. Lock a threshold, then try another to compare.</p>
+    <div class="topbar-head">
+      <div class="topbar-head-text">
+        <h1>Auto Credit/Write Off Threshold Explorer</h1>
+        <p class="sub">Interactive threshold playbook with the same chart style as the COOP / Logistics one-pagers. Lock a threshold, then try another to compare.</p>
+      </div>
+      <div class="topbar-actions">
+        <button type="button" class="pdf-btn" id="btn-pdf-page" title="Download a PDF of the current tab">Download PDF</button>
+      </div>
+    </div>
     <div class="tabs">
       <button type="button" class="tab active" data-tab="coop">COOP</button>
       <button type="button" class="tab" data-tab="logistics">Logistics Claims</button>
@@ -1888,51 +1933,56 @@
         <div class="section-title">Priority explorer</div>
         <p class="priority-sub">Blend <b>business priority</b> (Days in arrears) and <b>Amount</b> into one decision score. The heatmap always shows every Priority × Amount combination — no Excel needed for the matrix. Load data below to score real lines.</p>
 
-        <div class="decision-layout">
-          <aside class="decision-sidebar">
-            <h4>Weights</h4>
+        <div class="heat-card" style="margin-top:16px">
+          <h4 id="prio-heat-title" style="margin:0">Decision heatmap</h4>
+          <div class="heat-caption" id="prio-heat-cap" style="margin:4px 0 12px">Rows = business priority. Columns = amount. Each cell shows the weighted score and resulting level.</div>
+          <div id="prio-heatmap" style="overflow:auto"></div>
+          <div id="prio-level-cards" class="decision-cards"></div>
+          <div class="how-read" id="prio-how-read">
+            <b>Example:</b> raise Priority weight to see high-priority / low-amount cases move upward. Raise Amount weight to make larger amounts drive the result more strongly.
+          </div>
+          <div class="table-note" id="prio-status" style="margin-top:10px"></div>
+        </div>
+
+        <div class="heat-card decision-weights-below" style="margin-top:16px">
+          <h4 style="margin:0 0 4px">Weights</h4>
+          <div class="heat-caption" style="margin:0 0 14px">Priority and Amount bars move independently. Effective mix is the share of each bar.</div>
+          <div class="decision-weight-grid">
             <div class="decision-weight-row">
               <div class="dw-head"><span>Priority weight</span><span id="w-prio-val">50</span></div>
-              <input id="w-prio" type="range" min="0" max="100" step="5" value="50" />
+              <input id="w-prio" type="range" min="0" max="100" step="5" value="50" autocomplete="off" />
             </div>
             <div class="decision-weight-row">
               <div class="dw-head"><span>Amount weight</span><span id="w-amt-val">50</span></div>
-              <input id="w-amt" type="range" min="0" max="100" step="5" value="50" />
+              <input id="w-amt" type="range" min="0" max="100" step="5" value="50" autocomplete="off" />
             </div>
+          </div>
+          <div class="decision-mix-row">
             <div class="decision-mix" id="decision-mix">
               <div class="dm-title">Effective mix</div>
               <div>Amount: <b id="mix-amt">50%</b></div>
               <div>Priority: <b id="mix-prio">50%</b></div>
             </div>
-            <button type="button" class="action" id="w-reset" style="width:100%">Reset to 50 / 50</button>
-
-            <h4 style="margin-top:18px">Final level thresholds</h4>
+            <button type="button" class="action" id="w-reset">Reset to 50 / 50</button>
+          </div>
+          <h4 style="margin:18px 0 4px">Final level thresholds</h4>
+          <div class="heat-caption" style="margin:0 0 10px">Default Medium ≥ 35, High ≥ 60, Urgent ≥ 80. At 50/50 that yields Low 1 · Medium 5 · High 7 · Urgent 3.</div>
+          <div class="decision-score-grid">
             <div class="indep-row" style="grid-template-columns:90px 1fr 64px">
-              <span class="indep-lab">Medium</span>
-              <input id="score-med" type="range" min="1" max="99" step="1" value="35" />
-              <input id="score-med-num" class="indep-num" type="number" min="1" max="99" value="35" />
-            </div>
-            <div class="indep-row" style="grid-template-columns:90px 1fr 64px">
-              <span class="indep-lab">High</span>
-              <input id="score-high" type="range" min="1" max="99" step="1" value="60" />
-              <input id="score-high-num" class="indep-num" type="number" min="1" max="99" value="60" />
+              <span class="indep-lab">Medium ≥</span>
+              <input id="score-med" type="range" min="1" max="99" step="1" value="35" autocomplete="off" />
+              <input id="score-med-num" class="indep-num" type="number" min="1" max="99" value="35" autocomplete="off" />
             </div>
             <div class="indep-row" style="grid-template-columns:90px 1fr 64px">
-              <span class="indep-lab">Urgent</span>
-              <input id="score-urgent" type="range" min="1" max="99" step="1" value="80" />
-              <input id="score-urgent-num" class="indep-num" type="number" min="1" max="99" value="80" />
+              <span class="indep-lab">High ≥</span>
+              <input id="score-high" type="range" min="1" max="99" step="1" value="60" autocomplete="off" />
+              <input id="score-high-num" class="indep-num" type="number" min="1" max="99" value="60" autocomplete="off" />
             </div>
-          </aside>
-
-          <div class="heat-card" style="margin:0">
-            <h4 id="prio-heat-title" style="margin:0">Decision heatmap</h4>
-            <div class="heat-caption" id="prio-heat-cap" style="margin:4px 0 12px">Rows = business priority. Columns = amount. Each cell shows the weighted score and resulting level.</div>
-            <div id="prio-heatmap" style="overflow:auto"></div>
-            <div id="prio-level-cards" class="decision-cards"></div>
-            <div class="how-read" id="prio-how-read">
-              <b>Example:</b> raise Priority weight to see high-priority / low-amount cases move upward. Raise Amount weight to make larger amounts drive the result more strongly.
+            <div class="indep-row" style="grid-template-columns:90px 1fr 64px">
+              <span class="indep-lab">Urgent ≥</span>
+              <input id="score-urgent" type="range" min="1" max="99" step="1" value="80" autocomplete="off" />
+              <input id="score-urgent-num" class="indep-num" type="number" min="1" max="99" value="80" autocomplete="off" />
             </div>
-            <div class="table-note" id="prio-status" style="margin-top:10px"></div>
           </div>
         </div>
 
@@ -2082,7 +2132,8 @@
     }
 
     const priorityState = {
-      amountWeight: 50, // 0–100; Priority weight = 100 − amountWeight
+      amountWeight: 50,
+      priorityWeight: 50,
     };
 
     const DECISION_PRIORITY = [
@@ -2279,7 +2330,7 @@
     function triggerDownload(dataUrl, filename) {
       const a = document.createElement("a");
       a.href = dataUrl;
-      a.download = filename.endsWith(".png") ? filename : `${filename}.png`;
+      a.download = filename;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -2294,7 +2345,8 @@
       ctx.fillStyle = "#ffffff";
       ctx.fillRect(0, 0, tmp.width, tmp.height);
       ctx.drawImage(canvas, 0, 0);
-      triggerDownload(tmp.toDataURL("image/png"), filename);
+      const name = filename.endsWith(".png") ? filename : `${filename}.png`;
+      triggerDownload(tmp.toDataURL("image/png"), name);
     }
 
     async function downloadElementPng(el, filename, btn) {
@@ -2307,15 +2359,140 @@
           logging: false,
           useCORS: true,
           ignoreElements: (node) =>
-            node.classList?.contains("dl-btn") || node.hasAttribute?.("data-dl-el-btn"),
+            node.classList?.contains("dl-btn") ||
+            node.hasAttribute?.("data-dl-el-btn") ||
+            node.classList?.contains("pdf-btn"),
         });
-        triggerDownload(canvas.toDataURL("image/png"), filename);
+        const name = filename.endsWith(".png") ? filename : `${filename}.png`;
+        triggerDownload(canvas.toDataURL("image/png"), name);
       } finally {
         if (btn) btn.disabled = false;
       }
     }
 
+    function activeTabKey() {
+      return document.querySelector(".tab.active")?.getAttribute("data-tab") || "coop";
+    }
+
+    function activeViewEl() {
+      return document.querySelector(".view:not(.hidden)") || $("view-coop");
+    }
+
+    function stampPdfFilename(tabKey) {
+      const d = new Date();
+      const pad = (n) => String(n).padStart(2, "0");
+      const stamp = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}`;
+      return `threshold-explorer-${tabKey}-${stamp}.pdf`;
+    }
+
+    function buildPdfFromCanvas(canvas, title) {
+      const JsPDF = window.jspdf?.jsPDF;
+      if (!JsPDF) throw new Error("jsPDF failed to load");
+
+      const pdf = new JsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const marginX = 28;
+      const marginTop = 48;
+      const marginBottom = 28;
+      const usableWidth = pageWidth - marginX * 2;
+      const usableHeight = pageHeight - marginTop - marginBottom;
+      const scale = usableWidth / canvas.width;
+      const pageSlicePx = Math.max(1, Math.floor(usableHeight / scale));
+
+      let y = 0;
+      let pageIndex = 0;
+      while (y < canvas.height) {
+        if (pageIndex > 0) pdf.addPage();
+
+        const sliceH = Math.min(pageSlicePx, canvas.height - y);
+        const slice = document.createElement("canvas");
+        slice.width = canvas.width;
+        slice.height = sliceH;
+        const ctx = slice.getContext("2d");
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, slice.width, slice.height);
+        ctx.drawImage(canvas, 0, y, canvas.width, sliceH, 0, 0, canvas.width, sliceH);
+
+        const imgH = sliceH * scale;
+        pdf.setFont("helvetica", "bold");
+        pdf.setFontSize(11);
+        pdf.setTextColor(38, 73, 178);
+        pdf.text(title, marginX, 28);
+        pdf.setFont("helvetica", "normal");
+        pdf.setFontSize(8);
+        pdf.setTextColor(120, 120, 120);
+        pdf.text(`Page ${pageIndex + 1}`, pageWidth - marginX, 28, { align: "right" });
+        pdf.addImage(slice.toDataURL("image/jpeg", 0.92), "JPEG", marginX, marginTop, usableWidth, imgH);
+
+        y += sliceH;
+        pageIndex += 1;
+        if (pageIndex > 40) break;
+      }
+      return pdf;
+    }
+
+    async function downloadCurrentPagePdf(btn) {
+      const view = activeViewEl();
+      if (!view) return;
+      if (typeof html2canvas !== "function") {
+        alert("PDF export needs html2canvas. Check your network connection and reload.");
+        return;
+      }
+      if (!window.jspdf?.jsPDF) {
+        alert("PDF export needs jsPDF. Check your network connection and reload.");
+        return;
+      }
+
+      const tabKey = activeTabKey();
+      const tabLabel =
+        document.querySelector(".tab.active")?.textContent?.trim() || tabKey;
+      const title = `Threshold Explorer — ${tabLabel}`;
+      const prev = btn?.textContent;
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = "Generating PDF…";
+      }
+      try {
+        const prevScrollY = window.scrollY;
+        window.scrollTo(0, 0);
+        await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+        const canvas = await html2canvas(view, {
+          backgroundColor: "#ffffff",
+          scale: Math.min(2, window.devicePixelRatio || 1.5),
+          logging: false,
+          useCORS: true,
+          windowWidth: document.documentElement.scrollWidth,
+          scrollX: 0,
+          scrollY: 0,
+          ignoreElements: (node) =>
+            node.classList?.contains("dl-btn") ||
+            node.hasAttribute?.("data-dl-el-btn") ||
+            node.classList?.contains("pdf-btn") ||
+            node.classList?.contains("topbar"),
+        });
+
+        const pdf = buildPdfFromCanvas(canvas, title);
+        pdf.save(stampPdfFilename(tabKey));
+        window.scrollTo(0, prevScrollY);
+      } catch (err) {
+        console.error(err);
+        alert("Could not generate PDF. Try again, or download individual charts as PNG.");
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = prev || "Download PDF";
+        }
+      }
+    }
+
     document.addEventListener("click", (e) => {
+      if (e.target.closest("#btn-pdf-page")) {
+        e.preventDefault();
+        downloadCurrentPagePdf($("btn-pdf-page"));
+        return;
+      }
       const canvasBtn = e.target.closest("[data-dl-canvas]");
       if (canvasBtn) {
         e.preventDefault();
@@ -3895,9 +4072,12 @@
       }
     }
 
-    function blendedDecisionScore(priorityWeight, amountWeight, amtPct) {
-      const w = Math.max(0, Math.min(1, (Number(amtPct) || 0) / 100));
-      return priorityWeight * (1 - w) + amountWeight * w;
+    function blendedDecisionScore(prioScore, amtScore, priorityWeight, amountWeight) {
+      const pw = Math.max(0, Number(priorityWeight) || 0);
+      const aw = Math.max(0, Number(amountWeight) || 0);
+      const sum = pw + aw;
+      if (sum <= 0) return (prioScore + amtScore) / 2;
+      return prioScore * (pw / sum) + amtScore * (aw / sum);
     }
 
     function levelFromDecisionScore(score, thr) {
@@ -3918,8 +4098,18 @@
       let prio = Number($("w-prio")?.value);
       if (!Number.isFinite(amt)) amt = 50;
       if (!Number.isFinite(prio)) prio = 50;
-      // Keep linked: editing one updates the other to sum 100
+      amt = Math.max(0, Math.min(100, amt));
+      prio = Math.max(0, Math.min(100, prio));
       return { amountWeight: amt, priorityWeight: prio };
+    }
+
+    function effectiveMixPercents(priorityWeight, amountWeight) {
+      const sum = priorityWeight + amountWeight;
+      if (sum <= 0) return { amountPct: 50, priorityPct: 50 };
+      return {
+        amountPct: (amountWeight / sum) * 100,
+        priorityPct: (priorityWeight / sum) * 100,
+      };
     }
 
     function getScoreThresholds() {
@@ -3931,8 +4121,9 @@
       if ($("w-prio")) $("w-prio").value = String(prio);
       if ($("w-amt-val")) $("w-amt-val").textContent = String(Math.round(amt));
       if ($("w-prio-val")) $("w-prio-val").textContent = String(Math.round(prio));
-      if ($("mix-amt")) $("mix-amt").textContent = `${Math.round(amt)}%`;
-      if ($("mix-prio")) $("mix-prio").textContent = `${Math.round(prio)}%`;
+      const mix = effectiveMixPercents(prio, amt);
+      if ($("mix-amt")) $("mix-amt").textContent = `${Math.round(mix.amountPct)}%`;
+      if ($("mix-prio")) $("mix-prio").textContent = `${Math.round(mix.priorityPct)}%`;
     }
 
     function syncScoreThresholdInputs(thr) {
@@ -3943,7 +4134,16 @@
       });
     }
 
-    function renderDecisionHeatmap(amtWeight, scoreThr) {
+    function resetScoreThresholds() {
+      syncScoreThresholdInputs([35, 60, 80]);
+    }
+
+    function resetDecisionDefaults() {
+      syncDecisionWeightUi(50, 50);
+      resetScoreThresholds();
+    }
+
+    function renderDecisionHeatmap(priorityWeight, amountWeight, scoreThr) {
       const el = $("prio-heatmap");
       const cards = $("prio-level-cards");
       const title = $("prio-heat-title");
@@ -3966,7 +4166,7 @@
       for (const p of DECISION_PRIORITY) {
         html += `<tr><td class="row-lab">${p.name}<span class="th-range">(${p.weight})</span></td>`;
         for (const a of DECISION_AMOUNT) {
-          const score = blendedDecisionScore(p.weight, a.weight, amtWeight);
+          const score = blendedDecisionScore(p.weight, a.weight, priorityWeight, amountWeight);
           const level = levelFromDecisionScore(score, scoreThr);
           counts[level] += 1;
           html += `<td class="decision-cell lvl-${level}">
@@ -3999,16 +4199,15 @@
       syncPriorityTabUi();
 
       // --- Decision matrix (always) ---
-      let { amountWeight, priorityWeight } = getDecisionWeights();
-      // Prefer amount slider as source of truth when they diverge
-      amountWeight = Math.max(0, Math.min(100, amountWeight));
-      priorityWeight = 100 - amountWeight;
+      const { amountWeight, priorityWeight } = getDecisionWeights();
       syncDecisionWeightUi(amountWeight, priorityWeight);
       priorityState.amountWeight = amountWeight;
+      priorityState.priorityWeight = priorityWeight;
 
       const scoreThr = getScoreThresholds();
       syncScoreThresholdInputs(scoreThr);
-      const matrix = renderDecisionHeatmap(amountWeight, scoreThr);
+      const matrix = renderDecisionHeatmap(priorityWeight, amountWeight, scoreThr);
+      const mix = effectiveMixPercents(priorityWeight, amountWeight);
 
       // --- Optional: score loaded lines ---
       const rows = prioritySourceRows();
@@ -4024,7 +4223,7 @@
           table.innerHTML = `<tbody><tr><td style="text-align:left;color:#888">Load COOP / Logistics Excel to score lines into these decision levels. The heatmap above works without data.</td></tr></tbody>`;
         }
         if (status) {
-          status.textContent = `Matrix ${matrix.counts.Low}/${matrix.counts.Medium}/${matrix.counts.High}/${matrix.counts.Urgent} (L/M/H/U of ${matrix.totalCells}) · Amount weight ${Math.round(amountWeight)}%`;
+          status.textContent = `Matrix ${matrix.counts.Low}/${matrix.counts.Medium}/${matrix.counts.High}/${matrix.counts.Urgent} (L/M/H/U of ${matrix.totalCells}) · Mix A ${Math.round(mix.amountPct)}% / P ${Math.round(mix.priorityPct)}%`;
         }
         return;
       }
@@ -4044,7 +4243,12 @@
           continue;
         }
         if (!amountTier || !daysTier) continue;
-        const score = blendedDecisionScore(weightByNameP[daysTier], weightByNameA[amountTier], amountWeight);
+        const score = blendedDecisionScore(
+          weightByNameP[daysTier],
+          weightByNameA[amountTier],
+          priorityWeight,
+          amountWeight
+        );
         const level = levelFromDecisionScore(score, scoreThr);
         scored.push({ row, amountTier, daysTier, score, level });
       }
@@ -4071,7 +4275,7 @@
       if (status) {
         const bits = [
           `Matrix ${matrix.counts.Low}/${matrix.counts.Medium}/${matrix.counts.High}/${matrix.counts.Urgent} (L/M/H/U of ${matrix.totalCells})`,
-          `Amount weight ${Math.round(amountWeight)}%`,
+          `Mix A ${Math.round(mix.amountPct)}% / P ${Math.round(mix.priorityPct)}%`,
           `${scored.length.toLocaleString()} lines scored`,
         ];
         if (daySorted.length) {
@@ -4323,22 +4527,21 @@
     }
 
     function wirePriorityTab() {
-      const linkWeights = (source) => {
-        if (source === "amt") {
-          const amt = Math.max(0, Math.min(100, Number($("w-amt").value) || 0));
-          syncDecisionWeightUi(amt, 100 - amt);
-        } else {
-          const prio = Math.max(0, Math.min(100, Number($("w-prio").value) || 0));
-          syncDecisionWeightUi(100 - prio, prio);
-        }
+      const bumpWeight = () => {
+        const amt = Math.max(0, Math.min(100, Number($("w-amt")?.value) || 0));
+        const prio = Math.max(0, Math.min(100, Number($("w-prio")?.value) || 0));
+        syncDecisionWeightUi(amt, prio);
         refreshPriority();
       };
-      $("w-amt")?.addEventListener("input", () => linkWeights("amt"));
-      $("w-prio")?.addEventListener("input", () => linkWeights("prio"));
+      $("w-amt")?.addEventListener("input", bumpWeight);
+      $("w-prio")?.addEventListener("input", bumpWeight);
       $("w-reset")?.addEventListener("click", () => {
-        syncDecisionWeightUi(50, 50);
+        resetDecisionDefaults();
         refreshPriority();
       });
+
+      // Browser may restore old slider values from cache — snap back to defaults once on load
+      resetDecisionDefaults();
 
       ["score-med", "score-high", "score-urgent"].forEach((id) => {
         $(id)?.addEventListener("input", () => {
