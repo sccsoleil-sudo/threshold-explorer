@@ -3125,15 +3125,49 @@
       border: 1px solid #e5e7f0; padding: 6px 8px; text-align: left;
     }
     table.data th { background: #2649B2; color: #fff; }
-    img { max-width: 100%; height: auto; }
+    table.data th:not(:first-child), table.data td:not(:first-child) { text-align: right; }
+    img { max-width: 100%; height: auto; display: block; }
+    canvas { max-width: 100%; height: auto; }
     .footnote, .table-note, .heat-caption { color: #666; font-size: 12px; }
-    .locked-card { border: 1px solid #e5e7f0; border-radius: 10px; padding: 12px; margin-bottom: 12px; }
+    .locked-card { border: 1px solid #e5e7f0; border-radius: 10px; padding: 12px; margin-bottom: 12px; background: #fff; }
+    .locked-card h3 { margin: 0 0 4px; font-size: 14px; color: #2649B2; }
+    .locked-card .thr { font-size: 18px; font-weight: 700; margin: 4px 0; }
+    .locked-card .meta { font-size: 12px; color: #666; margin-bottom: 8px; }
     .locked-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
     @media (max-width: 800px) { .locked-grid { grid-template-columns: 1fr; } }
     .coverage-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
     @media (max-width: 900px) { .coverage-grid { grid-template-columns: 1fr; } }
-    .chart-title { font-weight: 700; }
-    .chart-subtitle { font-size: 12px; color: #666; margin-bottom: 8px; }
+    .charts { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 8px; }
+    @media (max-width: 800px) { .charts { grid-template-columns: 1fr; } }
+    .chart-box { border: 1px solid #eee; border-radius: 10px; padding: 16px; }
+    .chart-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; margin-bottom: 8px; }
+    .chart-title { font-weight: 700; font-size: 15px; color: #2649B2; margin-bottom: 2px; }
+    .chart-subtitle { font-size: 11px; color: #888; margin-bottom: 14px; }
+    .legend { display: flex; gap: 16px; font-size: 12px; margin-bottom: 10px; flex-wrap: wrap; }
+    .legend-item { display: flex; align-items: center; gap: 6px; }
+    .swatch { width: 12px; height: 12px; border-radius: 3px; display: inline-block; flex-shrink: 0; }
+    .bar-group { display: flex; align-items: flex-end; gap: 10px; margin-bottom: 14px; }
+    .bar-cat-label {
+      width: 110px; font-size: 12px; font-weight: 600; text-align: right;
+      padding-right: 8px; flex-shrink: 0;
+    }
+    .bars { flex: 1; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+    .bar-row { display: flex; align-items: center; gap: 8px; }
+    .bar-track {
+      flex: 1; background: #f0f1f7; border-radius: 4px; height: 16px; min-width: 0; overflow: hidden;
+    }
+    .bar-fill { height: 16px; border-radius: 4px; min-width: 0; display: block; }
+    .bar-value { font-size: 11px; margin-left: 4px; white-space: nowrap; color: #333; min-width: 120px; }
+    .heat-1d { display: grid; gap: 8px; }
+    .heat-1d-cell { border-radius: 8px; padding: 12px; }
+    .heat-1d-cell .h1-name { font-size: 12px; font-weight: 700; text-transform: uppercase; }
+    .heat-1d-cell .h1-val { font-size: 20px; font-weight: 700; margin-top: 6px; }
+    .heat-1d-cell .h1-sub { font-size: 11px; margin-top: 4px; opacity: 0.9; }
+    .heat-2d { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .heat-2d th, .heat-2d td { border: 1px solid #e5e7f0; padding: 8px; text-align: center; }
+    .heat-2d th { background: #f5f6fa; }
+    .heat-2d td.row-lab { text-align: left; font-weight: 700; background: #fafbff; }
+    .heat-2d .h-sub { display: block; font-size: 11px; opacity: 0.85; margin-top: 2px; }
   </style>
 </head>
 <body>
