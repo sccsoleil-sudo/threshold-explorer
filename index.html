@@ -46,9 +46,30 @@
     }
     .topbar-actions {
       display: flex;
+      flex-direction: column;
+      align-items: flex-end;
       gap: 8px;
       flex-shrink: 0;
       padding-top: 2px;
+    }
+    .pdf-opt {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: #555;
+      cursor: pointer;
+      user-select: none;
+      white-space: nowrap;
+    }
+    .pdf-opt input {
+      width: 14px;
+      height: 14px;
+      accent-color: #2649B2;
+      cursor: pointer;
+    }
+    body.pdf-exporting.pdf-hide-upload .upload-panel {
+      display: none !important;
     }
     button.pdf-btn {
       appearance: none;
@@ -1613,6 +1634,10 @@
         <p class="sub">Interactive threshold playbook with the same chart style as the COOP / Logistics one-pagers. Lock a threshold, then try another to compare.</p>
       </div>
       <div class="topbar-actions">
+        <label class="pdf-opt" title="When unchecked, the Excel drop / upload block is left out of the PDF">
+          <input type="checkbox" id="pdf-include-upload" />
+          Include drop-file area
+        </label>
         <button type="button" class="pdf-btn" id="btn-pdf-page" title="Download a PDF of the current tab">Download PDF</button>
       </div>
     </div>
@@ -2385,7 +2410,81 @@
       return `threshold-explorer-${tabKey}-${stamp}.pdf`;
     }
 
-    function buildPdfFromCanvas(canvas, title) {
+    function offsetTopInRoot(el, root) {
+      const er = el.getBoundingClientRect();
+      const rr = root.getBoundingClientRect();
+      return er.top - rr.top + root.scrollTop;
+    }
+
+    /** Collect table (and large card) regions in canvas pixel space so page breaks avoid cutting them. */
+    function collectPdfKeepRegions(root, pxScale) {
+      const regions = [];
+      const pushRegion = (el, withRows) => {
+        if (!el || el.closest?.(".upload-panel")) return;
+        if (el.offsetWidth < 2 || el.offsetHeight < 2) return;
+        const top = offsetTopInRoot(el, root) * pxScale;
+        const bottom = top + el.offsetHeight * pxScale;
+        const rowCuts = [];
+        if (withRows) {
+          el.querySelectorAll("tr").forEach((row) => {
+            if (row.offsetHeight < 1) return;
+            const rt = offsetTopInRoot(row, root) * pxScale;
+            rowCuts.push(rt);
+            rowCuts.push(rt + row.offsetHeight * pxScale);
+          });
+        }
+        regions.push({ top, bottom, rowCuts, kind: withRows ? "table" : "block" });
+      };
+
+      root.querySelectorAll("table").forEach((t) => pushRegion(t, true));
+      root.querySelectorAll(".heat-card, .chart-box, .coverage-box, .locked-card").forEach((el) => {
+        // Only keep-together if it does not already wrap a measured table (tables handle themselves)
+        if (el.querySelector("table")) return;
+        pushRegion(el, false);
+      });
+      regions.sort((a, b) => a.top - b.top);
+      return regions;
+    }
+
+    function choosePdfBreak(startY, maxH, canvasH, regions) {
+      const ideal = Math.min(startY + maxH, canvasH);
+      if (ideal >= canvasH - 1) return canvasH;
+
+      for (const r of regions) {
+        // Would this ideal break cut through the region?
+        if (!(ideal > r.top + 1 && ideal < r.bottom - 1)) continue;
+
+        const regionH = r.bottom - r.top;
+        const space = startY + maxH;
+
+        // Region fully on this page → break after it
+        if (r.top >= startY - 1 && r.bottom <= space + 1) {
+          return Math.min(Math.ceil(r.bottom), canvasH);
+        }
+
+        // Region starts below current page start and does not fit → break before it
+        if (r.top > startY + 24 && r.top < ideal) {
+          // If moving it to next page still cannot fit whole region, keep going and use row cuts
+          if (regionH <= maxH) return Math.floor(r.top);
+        }
+
+        // Region already started on (or before) this page — cut only at row edges for tables
+        if (r.rowCuts && r.rowCuts.length) {
+          let best = null;
+          for (const cut of r.rowCuts) {
+            if (cut > startY + 16 && cut <= space) best = cut;
+          }
+          if (best != null) return Math.min(Math.round(best), canvasH);
+        }
+
+        // Non-table block taller than a page: break before if possible, else force ideal
+        if (r.top > startY + 24) return Math.floor(r.top);
+      }
+
+      return ideal;
+    }
+
+    function buildPdfFromCanvas(canvas, title, keepRegions) {
       const JsPDF = window.jspdf?.jsPDF;
       if (!JsPDF) throw new Error("jsPDF failed to load");
 
@@ -2397,15 +2496,18 @@
       const marginBottom = 28;
       const usableWidth = pageWidth - marginX * 2;
       const usableHeight = pageHeight - marginTop - marginBottom;
-      const scale = usableWidth / canvas.width;
-      const pageSlicePx = Math.max(1, Math.floor(usableHeight / scale));
+      const pdfScale = usableWidth / canvas.width;
+      const pageSlicePx = Math.max(1, Math.floor(usableHeight / pdfScale));
 
       let y = 0;
       let pageIndex = 0;
-      while (y < canvas.height) {
+      while (y < canvas.height - 1) {
         if (pageIndex > 0) pdf.addPage();
 
-        const sliceH = Math.min(pageSlicePx, canvas.height - y);
+        let endY = choosePdfBreak(y, pageSlicePx, canvas.height, keepRegions || []);
+        if (endY <= y + 8) endY = Math.min(y + pageSlicePx, canvas.height);
+        const sliceH = Math.max(1, endY - y);
+
         const slice = document.createElement("canvas");
         slice.width = canvas.width;
         slice.height = sliceH;
@@ -2414,7 +2516,7 @@
         ctx.fillRect(0, 0, slice.width, slice.height);
         ctx.drawImage(canvas, 0, y, canvas.width, sliceH, 0, 0, canvas.width, sliceH);
 
-        const imgH = sliceH * scale;
+        const imgH = sliceH * pdfScale;
         pdf.setFont("helvetica", "bold");
         pdf.setFontSize(11);
         pdf.setTextColor(38, 73, 178);
@@ -2425,9 +2527,9 @@
         pdf.text(`Page ${pageIndex + 1}`, pageWidth - marginX, 28, { align: "right" });
         pdf.addImage(slice.toDataURL("image/jpeg", 0.92), "JPEG", marginX, marginTop, usableWidth, imgH);
 
-        y += sliceH;
+        y = endY;
         pageIndex += 1;
-        if (pageIndex > 40) break;
+        if (pageIndex > 60) break;
       }
       return pdf;
     }
@@ -2444,6 +2546,7 @@
         return;
       }
 
+      const includeUpload = !!$("pdf-include-upload")?.checked;
       const tabKey = activeTabKey();
       const tabLabel =
         document.querySelector(".tab.active")?.textContent?.trim() || tabKey;
@@ -2453,33 +2556,44 @@
         btn.disabled = true;
         btn.textContent = "Generating PDF…";
       }
+
+      document.body.classList.add("pdf-exporting");
+      if (!includeUpload) document.body.classList.add("pdf-hide-upload");
+
       try {
         const prevScrollY = window.scrollY;
         window.scrollTo(0, 0);
+        view.scrollTop = 0;
         await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
 
+        const captureScale = Math.min(2, window.devicePixelRatio || 1.5);
         const canvas = await html2canvas(view, {
           backgroundColor: "#ffffff",
-          scale: Math.min(2, window.devicePixelRatio || 1.5),
+          scale: captureScale,
           logging: false,
           useCORS: true,
           windowWidth: document.documentElement.scrollWidth,
           scrollX: 0,
-          scrollY: 0,
+          scrollY: -window.scrollY,
           ignoreElements: (node) =>
             node.classList?.contains("dl-btn") ||
             node.hasAttribute?.("data-dl-el-btn") ||
             node.classList?.contains("pdf-btn") ||
-            node.classList?.contains("topbar"),
+            node.classList?.contains("pdf-opt") ||
+            node.classList?.contains("topbar") ||
+            (!includeUpload && node.classList?.contains("upload-panel")),
         });
 
-        const pdf = buildPdfFromCanvas(canvas, title);
+        const pxScale = canvas.width / Math.max(1, view.scrollWidth || view.offsetWidth);
+        const keepRegions = collectPdfKeepRegions(view, pxScale);
+        const pdf = buildPdfFromCanvas(canvas, title, keepRegions);
         pdf.save(stampPdfFilename(tabKey));
         window.scrollTo(0, prevScrollY);
       } catch (err) {
         console.error(err);
         alert("Could not generate PDF. Try again, or download individual charts as PNG.");
       } finally {
+        document.body.classList.remove("pdf-exporting", "pdf-hide-upload");
         if (btn) {
           btn.disabled = false;
           btn.textContent = prev || "Download PDF";
