@@ -5536,7 +5536,7 @@ ${parts}
         renderCoopTable(rows, rule);
         renderTopClientsTable(ds, rows, rule);
       } else {
-        // Live charts follow the drag-bar; Amount band Lines/$$ KPIs use lock-aware per-reason bands
+        // Coverage / live bars follow the drag-bar; KPIs + detail tables use lock-aware per-reason bands
         const liveStats = groupStats(rows, rule, (r) => typeLabel(r.reason));
         const kpiStats = groupStats(rows, rule, (r) => typeLabel(r.reason), ruleForRow);
         const typeOrder = sortReasonCodes([...new Set(rows.map((r) => r.reason))])
@@ -5551,9 +5551,9 @@ ${parts}
           "Threshold $ vs Total $ by Reason Code",
           "Threshold Lines vs Claim Lines by Reason Code"
         );
-        renderLogisticsByDivisionCharts(rows, rule);
-        renderLogisticsTable(rows, rule);
-        renderTopClientsTable(ds, rows, rule);
+        renderLogisticsByDivisionCharts(rows, ruleForRow);
+        renderLogisticsTable(rows, ruleForRow);
+        renderTopClientsTable(ds, rows, ruleForRow);
       }
       schedulePersist(ds);
       if (!$("view-priority")?.classList.contains("hidden")) refreshPriority();
