@@ -3232,6 +3232,8 @@
         "script, style, input, button, .dl-btn, .btn-clear-all, .btn-remove-lock, [data-remove-lock], .msel, .pdf-btn, .pdf-opt"
       ).forEach((n) => n.remove());
       root.querySelectorAll("[data-pdf-skip]").forEach((n) => n.remove());
+      // Never include empty-state copy ("No locked thresholds yet…") in exports
+      root.querySelectorAll(".empty, [id^='empty-']").forEach((n) => n.remove());
       // Clones are detached from #app-logistics — match Logistics live-chart panels by title/id
       root.querySelectorAll(".panel").forEach((panel) => {
         const titleEl =
